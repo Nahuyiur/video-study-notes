@@ -1,8 +1,9 @@
 # StudyNote schema v2
 
-The agent supplies understanding after actually reading reserved packs. Saving a
-note validates identity, ranges, declared reading and safe assets; valid references
-do not prove semantic support. Check important explanations against the material.
+Native Codex supplies understanding after actually reading reserved packs; the
+standalone API engine submits actual packs and generates the same note structure.
+Saving validates identity, ranges, reading provenance and safe assets; valid
+references do not prove semantic support. Check important explanations against the material.
 No saving/export command fetches video, transcribes audio or calls a model.
 
 ## Save once, deliver many times
@@ -14,7 +15,10 @@ python scripts/video_notes.py export --run RUN --format md --text-only
 python scripts/video_notes.py export --run RUN --format html --revision 1 --out OUTPUT.html
 ```
 
-Finalize actual reading and usage first. Input uses this content structure:
+The standalone engine validates its draft before finalizing and saves it through
+this same contract; it does not accept a model-supplied snapshot or usage record.
+
+Finalize actual reading and usage before saving. Input uses this content structure:
 
 ```json
 {
@@ -88,6 +92,12 @@ and `snapshot`. The snapshot freezes:
   `notes/assets/<sha256>.jpg` copies.
 - `reading`: pack IDs, exact frame/segment IDs, declared status and exposure counts.
 
+API-accepted packs also preserve submission/response provenance and call identity,
+distinct from native reading declarations. This records the material submitted,
+not proof of visual comprehension or semantic correctness. The engine requires
+grounded takeaway/body content and actual frame references; it does not add
+references to unsupported generated explanations to make validation pass.
+
 It excludes source media paths, signed stream URLs, cookies, session files and raw
 provider responses. Images and snapshot/content hashes are checked on load.
 Repeated identical input with the same frozen evidence reuses the current
@@ -97,7 +107,8 @@ local lock. `load_note(run_dir, revision=None)` reads only notes and verified
 snapshot assets, so later source/run changes cannot alter an old export.
 
 Exports go to `exports/note-vNNN.html`, `.md` and a local receipt by default.
-Their displayed counters cover the frozen acquisition/reading run. Rendering
+Their displayed counters cover the frozen acquisition/reading run, including
+standalone API synthesis performed before finish. Rendering
 makes zero model calls; subsequent agent messages or publishing work may consume
 additional native tokens and are not folded into old video usage.
 

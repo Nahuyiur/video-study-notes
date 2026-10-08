@@ -1,6 +1,6 @@
 ---
 name: video-study-notes
-description: Understand courses, lectures and tutorials from Bilibili, individual YouTube videos or local files using timestamped subtitles/local ASR and actual sampled video frames. Create evidence-linked Chinese video notes with original-time links, explained images and honest bounded usage. Export offline HTML or Markdown, or deliver the saved note to Feishu when requested. Use for B站/BV/b23.tv and YouTube video summaries, lessons, slide/formula/code explanations and visual study notes.
+description: Understand courses, lectures and tutorials from Bilibili, individual YouTube videos or local files using timestamped subtitles/local ASR and actual sampled video frames. Create evidence-linked Chinese video notes with original-time links, explained images and honest bounded usage. Use native Codex reading by default, or the standalone Python/CLI engine when the user configures a model API. Export offline HTML or Markdown, or deliver the saved note to Feishu when requested. Use for B站/BV/b23.tv and YouTube summaries, lessons, slide/formula/code explanations and visual study notes.
 ---
 
 # 视频学习笔记
@@ -18,6 +18,14 @@ Each run processes at most 30 minutes; preserve remaining_range even when speech
 The current automatic overview rule is `min(cap, max(3, ceil(processed_seconds / 120)))`, with bin-center timestamps. This is a sparse economy heuristic. For slide-heavy lessons use `frames --strategy slides`: a bounded local low-resolution scan detects stable visual-change candidates, selects across time bins within the overview cap, then extracts the chosen frames. Candidate detection is not model reading or guaranteed page coverage. The uniform strategy remains the fallback. For dense slide videos, choose additional overview timestamps with `--times` within the remaining 12-frame cap when needed; do not claim page-by-page coverage from the default sampler. State the sampling rule and coverage limits in the HTML when they affect the result or the user asks about them.
 
 If `remaining_range` is non-null, deliver a clearly scoped partial result and retain the checkpoint. Do not auto-process unlimited chapters or silently summarize an entire course from an excerpt. Continue from the saved end when the user asks; a continuation gets a new run/ledger row. See the continuation command below. Budget expansion needs the user's requested depth or an explicit new budget. Sparse sampling cannot establish that every slide or transient action was seen.
+
+## Independent model API mode
+
+When the user supplies a model endpoint and requests independent/API execution, read [standalone-api.md](references/standalone-api.md) and use the shared `analyze` or `analyze_prepared` entrypoint. Configure the selected base_url, model and credential environment variable; keep keys out of command text, run artifacts and notes. Resolve a missing provider, credential reference or consequential paid budget with the user while continuing independent local preparation. Do not choose a paid provider for an ordinary native-Codex request.
+
+This mode submits actual caption/frame inputs and generates the same StudyNote, including its synthesis calls before usage is frozen. Inspect returned status, evidence, exports and usage. Submission receipts establish which materials were sent, not semantic accuracy. Do not separately execute the native read/finish steps below on an active API run, delete a pending-call marker, or automatically retry an unknown send. A completed note can be exported without new model calls. Keep unknown token/cost totals distinct from known subtotals and estimates.
+
+The numbered workflow below is the default native Codex mode.
 
 ## 1. Prepare the selected video/part
 
