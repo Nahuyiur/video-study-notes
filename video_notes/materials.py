@@ -47,7 +47,8 @@ def prepare(args):
     duration = selected_duration(source)
     if duration <= 0:
         raise ValueError("Source duration is missing; supply a valid source or local media")
-    end = duration if args.end is None else min(args.end, duration)
+    requested_end = duration if args.end is None else min(args.end, duration)
+    end = min(requested_end, args.start + 1800)
     if not 0 <= args.start < end:
         raise ValueError("Processing interval must be within the selected part")
     budget = PRESETS[args.preset].copy()
@@ -59,8 +60,8 @@ def prepare(args):
            "local_media": str(Path(args.video).resolve()) if Path(args.video).is_file() else None,
            "preset": args.preset, "budget": budget,
            "video_duration_seconds": duration,
-           "requested_range": [args.start, end], "processed_range": [args.start, processed_end],
-           "remaining_range": [processed_end, end] if processed_end < end else None,
+           "requested_range": [args.start, requested_end], "processed_range": [args.start, processed_end],
+           "remaining_range": [processed_end, requested_end] if processed_end < requested_end else None,
            "content_source": source.get("content", {}).get("source_type", "none"),
            "transcript_coverage_seconds": transcript_coverage(chosen, args.start, processed_end),
            "transcript_status": "ready" if chosen else "unavailable", "frames": [], "packs": [],
@@ -69,6 +70,7 @@ def prepare(args):
            "authenticated": bool(source.get("source", {}).get("authenticated"))}
     from .usage import counter_snapshot
     run["native_counter_before"] = counter_snapshot(args.session_log)
+    chosen = [{**r, "id": r.get("id", f"s{i:04d}")} for i, r in enumerate(chosen, 1)]
     save(directory / "segments.json", chosen)
     save(directory / "run.json", run)
     print(json.dumps({"run": str(directory), "title": source["metadata"].get("title"),
@@ -90,7 +92,26 @@ def frames(args):
     cap = run["budget"][args.kind + "_frames"]
     existing = [f for f in run["frames"] if f["kind"] == args.kind]
     count = min(cap, max(3, int((end - start + 119) // 120)))
-    times = [float(t) for t in args.times.split(",")] if args.times else sample_times(start, end, count)
+    strategy = getattr(args, "strategy", "uniform")
+    selected = []
+    if strategy == "slides" and args.kind == "overview" and not args.times:
+        from .sampling import scan, select_candidates
+        plan_path = directory / "sampling-plan.json"
+        if plan_path.exists():
+            plan = load(plan_path)
+            if plan["scan_range"] != [start, end]:
+                raise ValueError("Sampling plan scope changed; create a new run")
+        else:
+            media, options = media_input(directory, run, "video", args.use_env_cookie, args.media, height=360)
+            plan = scan(directory, media, options, start, end)
+            save(plan_path, plan)
+        selected = select_candidates(plan["candidates"], start, end, cap)
+        times = [r["timestamp"] for r in selected]
+        run["sampling"] = {k: v for k, v in plan.items() if k != "candidates"}
+        run["sampling"]["strategy"] = "slides"
+    else:
+        times = [float(t) for t in args.times.split(",")] if args.times else sample_times(start, end, count)
+    reasons = {r["timestamp"]: r["reason"] for r in selected}
     if args.kind == "detail" and not args.times:
         raise ValueError("Detail frames need explicit timestamps selected after overview review")
     if any(not start <= t < end for t in times):
@@ -124,7 +145,7 @@ def frames(args):
             save(directory / "run.json", run)
             continue
         run["frames"].append({"id": identifier, "kind": args.kind, "timestamp": second,
-                              "path": str(path), "sha256": digest, "nearby_segments": nearby(rows, second)})
+                              "path": str(path), "sha256": digest, "sampling_reason": reasons.get(second, "targeted_detail" if args.kind == "detail" else "uniform"), "nearby_segments": nearby(rows, second)})
         save(directory / "run.json", run)  # Resume after a failed network frame.
     print(json.dumps({"kind": args.kind, "sampled": len(new_times), "extracted": len(run["frames"]) - kept_before,
                       "frames": [{"id": f["id"], "timestamp": f["timestamp"], "path": f["path"]} for f in run["frames"] if f["kind"] == args.kind]}, ensure_ascii=False))
@@ -156,6 +177,7 @@ def transcribe(args):
     chosen, processed_end = bounded_segments(rows, start, end, int(run["budget"]["text_chars"] * .8))
     source = load(directory / "source.json")
     source["content"] = {"source_type": "asr", "language": transcript.get("language"), "segments": rows}
+    chosen = [{**r, "id": r.get("id", f"s{i:04d}")} for i, r in enumerate(chosen, 1)]
     save(directory / "source.json", source); save(directory / "segments.json", chosen)
     run.update({"content_source": "asr", "transcript_status": "ready" if chosen else "unavailable",
                 "asr_model": args.model, "asr_runtime": {"faster-whisper": "1.2.1", "av": "18.0.0", "ctranslate2": "4.8.2"},
@@ -173,11 +195,11 @@ def main(argv=None):
     p = sub.add_parser("prepare"); p.add_argument("--video", required=True); p.add_argument("--out", required=True)
     p.add_argument("--source-json"); p.add_argument("--transcript"); p.add_argument("--page", type=int)
     p.add_argument("--preset", choices=PRESETS, default="economy"); p.add_argument("--start", type=float, default=0)
-    p.add_argument("--end", type=float); p.add_argument("--session-log"); p.add_argument("--ledger")
+    p.add_argument("--language"); p.add_argument("--end", type=float); p.add_argument("--session-log"); p.add_argument("--ledger")
     p.add_argument("--use-env-cookie", action="store_true")
     p.set_defaults(func=prepare)
     p = sub.add_parser("frames"); p.add_argument("--run", required=True); p.add_argument("--kind", choices=("overview", "detail"), default="overview")
-    p.add_argument("--times"); p.add_argument("--media"); p.add_argument("--use-env-cookie", action="store_true"); p.set_defaults(func=frames)
+    p.add_argument("--strategy", choices=("uniform", "slides"), default="uniform"); p.add_argument("--times"); p.add_argument("--media"); p.add_argument("--use-env-cookie", action="store_true"); p.set_defaults(func=frames)
     p = sub.add_parser("transcribe"); p.add_argument("--run", required=True); p.add_argument("--media")
     p.add_argument("--model", choices=("base", "small"), default="small"); p.add_argument("--language", default="auto")
     p.add_argument("--use-env-cookie", action="store_true"); p.set_defaults(func=transcribe)

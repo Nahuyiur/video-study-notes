@@ -153,6 +153,7 @@ def finish(args):
               "transcript_coverage_seconds": run["transcript_coverage_seconds"],
               "materials": {"overview_frames_extracted": sum(f["kind"] == "overview" for f in run["frames"]),
                             "detail_frames_extracted": sum(f["kind"] == "detail" for f in run["frames"]),
+                            "candidate_frames_scanned": run.get("sampling", {}).get("candidate_frames", 0),
                             "read_batches_reserved": len(run["packs"]), "read_batches_claimed": len(read_ids),
                             "image_presentations_claimed": sum(p["images"] for p in run["packs"] if p["claimed_read"]),
                             "text_chars_claimed": sum(p["text_chars"] for p in run["packs"] if p["claimed_read"])},

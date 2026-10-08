@@ -4,6 +4,9 @@ from __future__ import annotations
 import json
 import math
 import re
+import time
+import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -65,7 +68,7 @@ def bounded_segments(rows, start, end, cap):
     for row in rows:
         if row["end"] <= start or row["start"] >= end:
             continue
-        cost = len(row["text"]) + 25  # Includes printed timestamps and separators.
+        cost = len(row["text"]) + 34  # Includes printed timestamps and separators.
         if used + cost > cap:
             processed_end = max(start, min(end, row["start"]))
             break
@@ -118,3 +121,35 @@ def open_run(directory):
 def ensure_open(run):
     if run.get("status") == "finished":
         raise ValueError("Run is finished; start a new run for further reading")
+
+
+@contextmanager
+def run_lock(directory):
+    import fcntl
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / ".run.lock").open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RuntimeError("Another command owns this run; retry after it finishes") from None
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+@contextmanager
+def activity(directory, command):
+    started, tick, status = now(), time.monotonic(), "failed"
+    try:
+        yield
+        status = "completed"
+    finally:
+        row = {"schema_version": 1, "event_id": str(uuid.uuid4()), "command": command,
+               "started_at": started, "finished_at": now(), "status": status,
+               "elapsed_seconds": round(time.monotonic() - tick, 3),
+               "native_tokens": None, "api_usd": None,
+               "observed_scope": "local command wall time; excludes Agent reading, synthesis and conversation"}
+        with (Path(directory) / "activities.jsonl").open("a") as output:
+            output.write(json.dumps(row, ensure_ascii=False) + "\n")

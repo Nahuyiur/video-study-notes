@@ -9,7 +9,8 @@ from ..run import load, selected_duration, segments_from
 def normalize_source(raw):
     platform = raw.get("source", {}).get("platform", "bilibili")
     meta, part = raw["metadata"], raw.get("selection", {})
-    content = dict(raw.get("content", {}))
+    content = {k: v for k, v in raw.get("content", {}).items()
+               if k in ("source_type", "language", "automatic", "subtitle_status", "provider_version")}
     content["segments"] = segments_from(raw)
     return source_record(platform, meta.get("media_id") or meta.get("bvid") or "provided",
                          part.get("part_id") or part.get("cid") or part.get("page", 1),

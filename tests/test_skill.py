@@ -34,7 +34,7 @@ class Contracts(unittest.TestCase):
 
     def test_long_course_checkpoints_instead_of_truncating_claim(self):
         rows = [{"start": i * 10, "end": i * 10 + 10, "text": "字" * 100} for i in range(100)]
-        chosen, end = core.bounded_segments(rows, 0, 1000, 250)
+        chosen, end = core.bounded_segments(rows, 0, 1000, 270)
         self.assertEqual(len(chosen), 2); self.assertEqual(end, 20)
 
     def test_resume_excludes_previous_segment(self):
