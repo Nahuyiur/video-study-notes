@@ -6,12 +6,15 @@ def dispatch(argv):
     command = argv[0] if argv else "--help"
     if command in ("--help", "-h"):
         print("usage: video_notes.py COMMAND [options]\n\n"
-              "Commands: prepare, frames, transcribe, read, finish, note, export, continue, add-api, summary\n"
+              "Commands: prepare, frames, transcribe, read, finish, note, export, publish, continue, add-api, summary\n"
               "Use COMMAND --help for its options. Actual understanding is performed by the Codex skill.")
         return 0
     if command in ("note", "export"):
         from .notes import main
         return main(argv)
+    if command == "publish":
+        from .delivery.feishu import main
+        return main(argv[1:])
     if command == "read":
         from .reading import main
         return main(argv[1:])
