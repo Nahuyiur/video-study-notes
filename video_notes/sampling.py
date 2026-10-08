@@ -19,10 +19,13 @@ def scene_candidates(paths, start, step, threshold=.035, stability=.02, timestam
         with Image.open(path) as picture:
             pictures.append(picture.convert("RGB").resize((96, 54)))
     result = []
+    baseline = pictures[0] if pictures else None
     for index in range(1, len(pictures) - 1):
-        if change(pictures[index - 1], pictures[index]) >= threshold and change(pictures[index], pictures[index + 1]) <= stability:
+        score = change(baseline, pictures[index])
+        if score >= threshold and change(pictures[index], pictures[index + 1]) <= stability:
             result.append({"timestamp": round(timestamps[index] if timestamps else start + index * step, 3), "reason": "stable_visual_change",
-                           "score": round(change(pictures[index - 1], pictures[index]), 5)})
+                           "score": round(score, 5)})
+            baseline = pictures[index]
     return result
 
 

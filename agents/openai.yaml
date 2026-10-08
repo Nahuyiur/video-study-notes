@@ -1,4 +1,4 @@
 interface:
   display_name: "视频学习笔记"
-  short_description: "结合字幕与关键帧生成清楚的 HTML 视频总结，控制预算并记录用量"
-  default_prompt: "使用 $video-study-notes 理解这个视频（目前支持 B站与本地视频），结合字幕与画面，生成带时间轴、关键画面解释和用量记录的 HTML 总结。"
+  short_description: "结合字幕与实际画面理解 B站、YouTube 和本地课程，输出 HTML、MD 或飞书"
+  default_prompt: "使用 $video-study-notes 理解这个 B站、YouTube 或本地视频，结合讲解与实际画面，生成带证据时间点、关键图解释和用量记录的 HTML 学习笔记。"

@@ -408,6 +408,7 @@ def usage_metrics(note):
         processed = (right - left) / 60
     estimate = tokens.get("material_text_estimate")
     return [("处理时长", f"{processed:g} 分钟"),
+            ("本地候选扫描帧", str(materials.get('candidate_frames_scanned', 0))),
             ("概览 / 细读帧", f"{materials.get('overview_frames_extracted', 0)} / {materials.get('detail_frames_extracted', 0)}"),
             ("已声明阅读帧", str(len(note["snapshot"]["frames"]))),
             ("实际总 token", str(actual) if actual is not None else "不可得"),
@@ -423,7 +424,7 @@ def usage_explanations(note):
     result = [prefix + "文字材料估算不含图片、推理、工具及历史上下文。订阅额度不折算为美元。"]
     if not usage.get("api_calls"):
         result.append("该 run 未记录独立付费 API 调用。")
-    result.append("此处为笔记创建前冻结的运行用量；导出脚本无模型调用，后续对话与发布活动不包含在这些历史计量中。")
+    result.append("此处为 prepare 到 finish 冻结的运行用量；笔记撰写、后续对话与发布不包含在此窗口中。导出脚本无模型调用。")
     if note.get("provenance", {}).get("kind") == "legacy_summary_import":
         result.append("从旧摘要导入：段落缺少精确证据映射；时间轴引用按时间重合推定，不能替代语义核对。")
     if note.get("usage_note"):

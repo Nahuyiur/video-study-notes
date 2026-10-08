@@ -1,4 +1,4 @@
-"""Acquire Bilibili/local materials and timestamped frames without paid AI calls."""
+"""Acquire source-neutral materials and timestamped frames without paid AI calls."""
 from __future__ import annotations
 
 import argparse

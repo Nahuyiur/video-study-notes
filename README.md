@@ -1,10 +1,10 @@
 # Video Study Notes · 视频学习笔记
 
-把视频中的**讲解、关键画面和时间轴**整理成清楚的 HTML 学习笔记。
+把视频中的**讲解、关键画面和时间轴**整理成 HTML、Markdown 或飞书学习笔记。
 
-这是一个 Codex skill：它提取视频材料，由当前 Codex 实际阅读转写与关键帧，再生成可离线保存的 HTML。适合课程、讲座、教程和研究解读视频。
+这是一个 Codex skill：它提取视频材料，由当前 Codex 实际阅读转写与关键帧，再保存一份可复用的笔记，按需要导出或交付。适合课程、讲座、教程和研究解读视频。
 
-目前支持 **Bilibili 与本地视频**；YouTube 支持列在后续计划中。名称不绑定某个平台，当前能力也不会提前标成“支持所有视频网站”。
+目前支持 **Bilibili、YouTube 单个视频与本地视频**。默认生成离线 HTML；也可以输出带配图或纯文本 Markdown，并通过本机已有飞书能力创建文档。平台权限、地区或接口变化可能影响素材访问。
 
 ## 能得到什么
 
@@ -17,7 +17,9 @@
 
 ## 安装与使用
 
-需要 Python 3.11+、FFmpeg/FFprobe；使用本地 ASR 时还需要 `uv`。概览联系表使用 Pillow，skill 通过 `uv run --with pillow` 提供隔离运行环境。当前真实音频链路在 macOS 上验证过；其他系统的 ASR/媒体访问需分别验证。
+需要 Python 3.11+、FFmpeg/FFprobe；概览联系表与课件候选扫描使用 Pillow，可以通过 `uv run --with pillow` 隔离提供。
+
+按需依赖：本地 ASR 使用 `uv` 和固定版本运行时；YouTube 使用 yt-dlp/EJS 与已有 Deno ≥ 2.3 或 Node ≥ 22；飞书需要已登录的 `lark-cli` user 身份。YouTube 依赖不影响 B站/本地路径，飞书依赖不影响 HTML/MD。详见 [YouTube](references/youtube.md) 与 [飞书交付](references/feishu.md)。真实媒体/转写链路已在 macOS 验证，其他系统需分别检查。
 
 新安装到 Codex 的全局 skill 目录：
 
@@ -33,7 +35,7 @@ git clone https://github.com/Nahuyiur/video-study-notes.git \
 重点解释方法和图示，生成 HTML 学习笔记。
 ```
 
-也可以指定时间范围、学习重点或本地视频。完整工作流见 [SKILL.md](SKILL.md)，统一笔记结构见 [references/note-schema.md](references/note-schema.md)。HTML 和 Markdown 消费同一份冻结笔记，切换格式不重新读视频。
+可以指定时间范围、学习重点或本地视频，例如“把这个 YouTube 课程的 20–40 分钟整理成 Markdown”，或“把刚才那份笔记放到飞书，保留图和原视频时间点”。完整工作流见 [SKILL.md](SKILL.md)，统一笔记结构见 [references/note-schema.md](references/note-schema.md)。HTML、Markdown 和飞书消费同一份冻结笔记，切换格式不重新读视频。模块边界见 [实现结构](references/architecture.md)。
 
 ## 工作流
 
@@ -42,8 +44,8 @@ git clone https://github.com/Nahuyiur/video-study-notes.git \
     → 提取字幕，缺失时本地 ASR
     → 概览关键帧 + 有限的局部细读
     → Codex 结合画面解释内容
-    → 保存版本化 StudyNote / 导出 HTML、Markdown
-    → 保存 usage.json 和共享用量账本
+    → 关闭阅读窗口，保存 usage.json 和共享用量账本
+    → 保存版本化 StudyNote / 导出 HTML、Markdown / 按需交付飞书
 ```
 
 纯脚本不会自行理解视频：创建图片不是看过图片，ASR 文本也不能替代视觉阅读。实际模型读图是 skill 工作流的一部分。
@@ -55,37 +57,34 @@ git clone https://github.com/Nahuyiur/video-study-notes.git \
 | economy（默认） | 12 | 6 | 4 | 12,000 |
 | standard | 24 | 12 | 8 | 24,000 |
 
-当前自动概览约每两分钟取一个时间点，至少三张，按整个处理区间均匀分布；细读根据已读讲解和画面选取。上限不是每次实际使用量。字幕超过材料预算或 ASR 超过单次 30 分钟时，保存检查点并给出明确的部分总结。
+当前自动概览约每两分钟取一个时间点，至少三张，按整个处理区间均匀分布；细读根据已读讲解和画面选取。上限不是每次实际使用量。字幕超过材料预算或 ASR 超过单次 30 分钟时，保存检查点并给出明确的部分总结。`continue` 从检查点创建下一段 run，旧笔记与账目保持原版本。
 
-课件可选 `frames --strategy slides`，先本地扫描稳定视觉变化，再按全段时间分桶选取预算内代表帧。候选扫描与模型阅读分别计量；并不保证每一页 PPT 都被捕获。 稀疏采样会漏掉页面、瞬时动作或小字。讲解全段已处理与视觉逐页覆盖是两回事；密集课件应在预算内补充代表帧，并在 HTML 中说明覆盖。
+课件可选 `frames --strategy slides`，先本地扫描稳定视觉变化，再按全段时间分桶选取预算内代表帧。候选扫描与模型阅读分别计量；并不保证每一页 PPT 都被捕获。稀疏采样会漏掉页面、瞬时动作或小字。讲解全段已处理与视觉逐页覆盖是两回事；密集课件应在预算内补充代表帧，并在 HTML 中说明覆盖。
 
 ### 用量记录
 
-有可信回执时记录实际 token；没有时为 `null`。文字材料粗估不包含图片、推理、工具或历史上下文，不能当作总 token。Codex 订阅额度不换算为美元；独立 API 计费只依据实际 usage 和核实的价格。
+分别记录本地候选扫描帧、提取帧、已读声明、处理分钟数和命令耗时。有可信回执时记录实际 token；没有时为 `null`。文字材料粗估不包含图片、推理、工具或历史上下文，不能当作总 token。Codex 订阅额度不换算为美元；独立 API 计费只依据实际 usage 和核实的价格。
 
-详细口径见 [references/metering.md](references/metering.md)。
+视频计量窗口是 prepare 到 finish；之后的笔记撰写、对话和发布不会伪装成这个窗口的已测用量。纯导出脚本没有模型调用。详细口径见 [references/metering.md](references/metering.md)。
 
 ## 验证与开发
 
-下面的单元测试只使用临时目录和合成夹具，不请求真实 B站媒体，也不调用模型：
+下面的单元测试只使用临时目录和合成夹具，不请求平台媒体、飞书服务，也不调用模型：
 
 ```bash
-python3 -m unittest discover -s tests -v
+uv run --python 3.12 --with pillow python -m unittest discover -s tests -v
 python3 -m compileall -q scripts video_notes
 ```
 
-39 项测试覆盖时间轴/分 P、预算与续读、失败和完成状态、用量计数与去重、HTML 转义、嵌入图片和部分覆盖。当前检查在本地运行；[GitHub Actions 配置模板](ci/github-actions-tests.yml) 已提供，计划检查 Python 3.11/3.12，**尚未启用**。发布账号当前令牌缺少 `workflow` 权限，待具有相应权限后把模板放入 `.github/workflows/tests.yml`。单元测试/CI 通过也不等于 B站接口、真实 ASR 或所有视频都可用。
+100 项测试覆盖来源契约、字幕格式/语言、依赖与隐私边界、采样与预算、续读、证据快照/版本、HTML/MD 一致性、飞书在线核对与未知结果恢复。真实验收另外完成 B站短片段 ASR/读图/笔记、YouTube 字幕/抽帧/读图/笔记及实际音频 ASR 回退、飞书正文/图片字节与重复发布、合成课件变化扫描。fixture 成功不等于所有线上视频都可用。
+
+[GitHub Actions 配置模板](ci/github-actions-tests.yml) 已提供，检查 Python 3.11/3.12，**尚未启用**。发布账号令牌缺少 `workflow` 权限；有相应权限后可将模板放入 `.github/workflows/tests.yml`。当前报告的是本地测试和实际验收。
 
 开发约束见 [AGENTS.md](AGENTS.md)。升级 ASR 或上游提取器时，应另做真实材料检查并更新固定版本与来源校验值。
 
-## 后续计划
+## 下一阶段
 
-- **改善画面覆盖**：本地识别 PPT 切页或明显画面变化，先去重再挑代表帧；比较均匀采样与变化采样的覆盖和阅读用量。
-- **加入 YouTube**：获取字幕/音视频，沿用统一时间轴、预算与 HTML 工作流；处理平台权限和字幕缺失。
-- **完善 HTML 阅读体验**：公式/代码展示、长课章节导航、关键图放大，以及适合展示的页面样式。
-- **形成可分享演示**：用自制或许可明确的材料制作示例，再整理小红书图文。当前仓库不自动发布内容。
-
-这些是计划，不是已实现的功能。
+功能适配已形成同一素材/证据/笔记链路。后续重点是长课阅读体验、公式渲染、关键图放大、页面样式及许可明确的可分享示例，再整理小红书图文。当前仓库不自动发布社交内容。
 
 ## 来源与许可
 

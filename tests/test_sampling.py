@@ -25,6 +25,7 @@ class Sampling(unittest.TestCase):
                 paths.append(path)
             result = scene_candidates(paths, 60, 5)
             self.assertNotIn(65, [r["timestamp"] for r in result])
+            self.assertNotIn(70, [r["timestamp"] for r in result])
             self.assertIn(80, [r["timestamp"] for r in result])
 
     def test_selection_stays_bounded(self):
