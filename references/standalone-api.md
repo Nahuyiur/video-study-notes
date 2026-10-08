@@ -55,11 +55,15 @@ Python 返回 `run_id`、`run_dir`、`status`、`note`、`outputs`、`usage`、`
 
 默认输出限制参数是 `max_completion_tokens`，可在 ProviderConfig 明确选择 `token_parameter="max_tokens"`。默认使用 `response_format={"type":"json_object"}`；不支持这个选项的服务可明确设置 `json_mode=False`，返回内容仍必须为符合约定的 JSON。不会自动增加 temperature 或做付费兼容性试探。配置选择参照服务文档；[OpenAI Chat Completions 协议](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)与[图像输入说明](https://developers.openai.com/api/docs/guides/images-vision)只适用于对应服务。
 
+HTTP 超时默认 90 秒。较慢的服务可在 Python 中设置 `ProviderConfig(timeout_seconds=300)`，或在 CLI 使用 `--timeout 300`；支持大于 0、最多 600 秒。这个选项改变传输等待时间，不增加调用次数或输出预算。已经超时且结果未知的 run 仍会阻止重发，延长超时不会解除该保护；经用户同意再次测试时，应新建 run 并保留旧记录。
+
 流程先取字幕，缺失且允许时用本地 ASR，再准备概览图片与同时间轴文字。模型完成一次概览，必要时在预算内选择一组细读时间点，最后生成 StudyNote。标题、简介不能替代讲解，字幕和画面被标明为非指令材料。图文提交回执保存确切材料 ID、哈希和调用身份；最终草稿先校验证据引用与时间范围，再冻结用量、保存和导出。
 
 独立入口默认 `strategy="slides"`，先用本地低分辨率候选扫描寻找稳定画面变化，再在概览预算内跨整段选择；可改为 `uniform`。候选扫描不向模型发送图片，也不代表已读或逐页覆盖。细读时间由概览响应选择，最多三个时间点，仍受剩余素材和调用预算限制。
 
 引用校验能阻止引用未提交材料，不能证明解释正确。API provenance 表示材料已提交并收到可校验响应；它与 Codex 的人工已读声明分别标记。稀疏采样仍可能漏页、漏动作和小字。部分区间和无语音结果会保留相应状态与限制。
+
+笔记的 `sources` 用于 `{label,url}` 外部参考。若模型把内部材料说明写成 `{type,description,evidence_refs}`，仅接受 `transcript` 或 `validated_visual_observations`，且引用必须分别指向实际提交的字幕或画面；有效说明保留到笔记的限制与材料说明中，不生成网址。原始响应不改写，缺失、错类或不可用引用仍会拒绝保存，也不会触发付费修复。
 
 ## 调用预算与账目
 

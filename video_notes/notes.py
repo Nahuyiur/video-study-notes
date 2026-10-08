@@ -447,7 +447,8 @@ def usage_explanations(note):
     elapsed = usage.get("elapsed_seconds")
     prefix = f"提取与阅读记录耗时 {elapsed / 60:.1f} 分钟；" if elapsed is not None else ""
     result = [prefix + "文字材料估算不含图片、推理、工具及历史上下文。订阅额度不折算为美元。"]
-    api_engine = note.get("provenance", {}).get("kind") == "api_engine"
+    api_engine = any(row.get("reading_method") == "api_material_submission_and_response"
+                     for row in note["snapshot"].get("reading", []))
     if not usage.get("api_calls"):
         result.append("该 run 未记录独立付费 API 调用。")
     if api_engine:

@@ -244,7 +244,22 @@ def _validation_snapshot(directory, read_ids):
 def _draft(directory, value, read_ids):
     if not isinstance(value, dict) or any(key in value for key in ("snapshot", "usage", "run", "content_hash", "note_id", "revision")):
         raise ValueError("Model must provide StudyNote content without runtime state")
-    data = notes.normalize_note(value, _validation_snapshot(directory, read_ids))
+    snapshot = _validation_snapshot(directory, read_ids)
+    sources, material_notes = [], []
+    material_types = {"transcript": "segment:", "validated_visual_observations": "frame:"}
+    for row in notes.objects(value.get("sources", []), "sources"):
+        # Models may describe submitted evidence instead of external references.
+        if set(row) == {"type", "description", "evidence_refs"} and isinstance(row["type"], str) and row["type"] in material_types:
+            refs = notes._refs(row["evidence_refs"], snapshot)
+            if not refs or any(not ref.startswith(material_types[row["type"]]) for ref in refs):
+                raise ValueError("Material source needs matching submitted evidence references")
+            description = notes.text(row["description"], "material source description", True)
+            material_notes.append("材料说明：" + description + " [" + ", ".join(refs) + "]")
+        else:
+            sources.append(row)
+    content = {**value, "sources": sources,
+               "caveats": notes.strings(value.get("caveats", []), "caveats") + material_notes}
+    data = notes.normalize_note(content, snapshot)
     if not data["takeaway_evidence_refs"]:
         raise ValueError("API takeaway needs evidence references")
     blocks = [block for section in data["sections"] for block in section["blocks"]]
@@ -484,6 +499,7 @@ def main(argv=None):
     parser.add_argument("--api-key-env", default="VIDEO_NOTES_API_KEY")
     parser.add_argument("--token-parameter", choices=("max_tokens", "max_completion_tokens"), default="max_completion_tokens")
     parser.add_argument("--no-json-mode", action="store_true")
+    parser.add_argument("--timeout", type=float, default=90, help="HTTP timeout in seconds, greater than 0 and at most 600")
     parser.add_argument("--format", default="html,md"); parser.add_argument("--focus", default="")
     parser.add_argument("--language", default="zh", help="Note output language; separate from captions/ASR")
     parser.add_argument("--no-asr", action="store_true"); parser.add_argument("--asr-model", choices=("base", "small"), default="small")
@@ -501,6 +517,7 @@ def main(argv=None):
     try:
         provider = api.ProviderConfig(args.base_url, args.model, api_key_env=args.api_key_env,
             token_parameter=args.token_parameter, json_mode=not args.no_json_mode,
+            timeout_seconds=args.timeout,
             max_image_bytes=args.max_image_bytes, max_request_bytes=args.max_request_bytes)
         budget = api.ApiBudget(args.max_calls, args.max_input_chars, args.max_images, args.output_tokens, args.max_output_tokens)
         common = {"provider": provider, "budget": budget, "outputs": args.format.split(","), "focus": args.focus,

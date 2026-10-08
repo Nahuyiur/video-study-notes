@@ -216,6 +216,49 @@ class StandaloneEngine(unittest.TestCase):
                 self.assertFalse((directory / "notes/note-v001.json").exists())
                 self.assertEqual(result["usage"]["tokens"]["api_actual"]["total_tokens"], 240)
 
+    def test_internal_material_sources_are_preserved_without_external_links_or_rebuying(self):
+        def mutate(stage, data):
+            if stage == "synthesis":
+                data["sources"] = [
+                    {"type": "transcript", "description": "Supplied speech", "evidence_refs": ["segment:s0001"]},
+                    {"type": "validated_visual_observations", "description": "Submitted visual", "evidence_refs": ["frame:f0001"]},
+                    {"label": "Visible reference", "url": "https://example.org/reference"}]
+        self.model.mutate = mutate
+        result = self.analyze()
+        self.assertEqual(result["status"], "complete", result["reason"])
+        self.assertEqual(result["note"]["sources"], [{"label": "Visible reference", "url": "https://example.org/reference"}])
+        self.assertIn("材料说明：Supplied speech [segment:s0001]", result["note"]["caveats"])
+        self.assertIn("材料说明：Submitted visual [frame:f0001]", result["note"]["caveats"])
+        again = self.analyze()
+        self.assertEqual(again["note"]["content_hash"], result["note"]["content_hash"])
+        self.assertEqual(len(self.model.requests), 2)
+
+    def test_internal_material_sources_reject_missing_wrong_kind_or_unavailable_refs(self):
+        for index, refs in enumerate(([], ["frame:f0001"], ["segment:missing"])):
+            directory = self.root / f"source-invalid-{index}"; self.prepare(directory)
+            def mutate(stage, data):
+                if stage == "synthesis":
+                    data["sources"] = [{"type": "transcript", "description": "Supplied speech", "evidence_refs": refs}]
+            model = ModelFixture(mutate=mutate)
+            with patch("video_notes.api.send", model):
+                first = analyze_prepared(directory, provider=self.config, allow_asr=False, ledger=self.ledger)
+                again = analyze_prepared(directory, provider=self.config, allow_asr=False, ledger=self.ledger)
+            self.assertEqual(first["status"], "failed")
+            self.assertEqual(again["status"], "failed")
+            self.assertEqual(len(model.requests), 2)
+            self.assertEqual(first["usage"]["tokens"]["api_actual"]["total_tokens"], 240)
+            self.assertFalse((directory / "usage.json").exists())
+
+    def test_reviewed_api_note_preserves_generation_metering(self):
+        first = self.analyze()
+        revised = notes.save_note(self.run, {**first["note"], "provenance": {
+            "kind": "api_engine_semantic_review", "reference_policy": "Reviewed visible explanation"}})
+        self.assertEqual(revised["revision"], 2)
+        self.assertEqual(revised["snapshot"]["usage"], first["note"]["snapshot"]["usage"])
+        explanations = " ".join(notes.usage_explanations(revised))
+        self.assertIn("笔记生成调用均计入", explanations)
+        self.assertNotIn("笔记撰写、后续对话与发布不包含", explanations)
+
     def test_material_changes_reject_active_resume_without_send(self):
         self.model.unknown_stage = "synthesis"
         first = self.analyze()
@@ -301,6 +344,25 @@ class StandaloneEngine(unittest.TestCase):
                              "--model", self.config.model, "--api-key-env", "FIXTURE_MODEL_KEY", "--end", "10"])
         self.assertEqual(code, 1)
         self.assertEqual(self.model.requests, [])
+
+    def test_cli_timeout_reaches_transport_and_invalid_values_do_not_dispatch(self):
+        options = ["analyze-prepared", "--run", str(self.run), "--base-url", self.config.base_url,
+                   "--model", self.config.model, "--api-key-env", "FIXTURE_MODEL_KEY", "--no-asr",
+                   "--ledger", self.ledger]
+        timeouts = []
+        def transport(config, request):
+            timeouts.append(config.timeout_seconds)
+            return self.model(config, request)
+        with patch.dict(os.environ, {"FIXTURE_MODEL_KEY": SECRET}), patch("video_notes.api.send", transport):
+            for invalid in ("0", "601", "nan"):
+                with contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(cli.main(options + ["--timeout", invalid]), 1)
+                self.assertEqual(timeouts, [])
+                self.assertEqual(list((self.run / "api").glob("*/attempt.json")), [])
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(cli.main(options + ["--timeout", "300"]), 0)
+        self.assertEqual(json.loads(output.getvalue())["status"], "complete")
+        self.assertEqual(timeouts, [300, 300])
 
     def test_focus_and_note_language_are_explicit_but_asr_separate(self):
         result = self.analyze(focus="Explain formulas", language="en")
