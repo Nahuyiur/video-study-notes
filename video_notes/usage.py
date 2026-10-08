@@ -11,7 +11,7 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from core import ensure_open, load, now, open_run, save, text_estimate
+from .run import ensure_open, load, now, open_run, save, text_estimate
 
 
 def counter_snapshot(path):
@@ -186,7 +186,7 @@ def summary(args):
                       for r in records[-args.last:]], ensure_ascii=False, indent=2))
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__); sub = parser.add_subparsers(dest="command", required=True)
     ledger = str(Path.home() / ".local/share/video-study-notes/usage.jsonl")
     p = sub.add_parser("add-api"); p.add_argument("--run", required=True); p.add_argument("--response", required=True)
@@ -195,7 +195,7 @@ def main():
     p.add_argument("--ledger"); p.add_argument("--native-usage"); p.add_argument("--quota-before"); p.add_argument("--quota-after")
     p.add_argument("--status", choices=("complete", "partial", "failed", "extraction_only", "visual_only"), required=True); p.set_defaults(func=finish)
     p = sub.add_parser("summary"); p.add_argument("--ledger", default=ledger); p.add_argument("--last", type=int, default=20); p.set_defaults(func=summary)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
         args.func(args); return 0
     except (ValueError, OSError, KeyError, TypeError, InvalidOperation) as exc:

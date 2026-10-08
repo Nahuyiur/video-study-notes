@@ -10,7 +10,7 @@ import math
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from core import load, stamp
+from ..run import load, stamp
 
 
 def esc(value):
@@ -25,14 +25,11 @@ def safe_url(value):
     return value
 
 
+from ..sources import timestamp_url
+
+
 def jump(url, second):
-    if not url:
-        return ""
-    parts = urlsplit(safe_url(url))
-    if parts.hostname not in ("www.bilibili.com", "bilibili.com"):
-        return url
-    query = [(k, v) for k, v in parse_qsl(parts.query) if k != "t"]
-    return urlunsplit(parts._replace(query=urlencode(query + [("t", str(int(second)))])))
+    return timestamp_url(url, second)
 
 
 def link(label, url):
@@ -133,7 +130,7 @@ def render(directory, data):
     sources = ([{"label": "原视频", "url": url}] if url else []) + data.get("sources", [])
     section("sources", "来源", '<div class="sources">' + " · ".join(link(s["label"], s["url"]) for s in sources) + "</div>" if sources else "")
 
-    style = (Path(__file__).resolve().parents[1] / "assets/summary.css").read_text()
+    style = (Path(__file__).resolve().parents[2] / "assets/summary.css").read_text()
     digest = hashlib.sha256(json.dumps(data, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
     coverage = "讲解全段 · 画面抽样" if status == "complete" else "材料覆盖有限 · " + status
     subtitle = f'<p class="subtitle">{esc(data["subtitle"])}</p>' if data.get("subtitle") else ""
@@ -142,12 +139,12 @@ def render(directory, data):
 <body><aside><div class="brand">VIDEO NOTES<span>视频阅读笔记</span></div><nav aria-label="目录">{"".join(nav)}</nav><p class="aside-note">讲解与画面一起读<br>原视频时间戳可点击</p></aside><main><header><div class="eyebrow">视频总结 <span>{esc(coverage)}</span></div><h1>{esc(data["title"])}</h1>{subtitle}<div class="header-meta">{esc(stamp(a))}–{esc(stamp(b))} · {esc(usage["content_source"])} · {materials["overview_frames_extracted"] + materials["detail_frames_extracted"]} 个采样画面</div></header>{"".join(chunks)}<footer>图片已嵌入 · 支持离线阅读与浏览器打印 · 摘要版本 {digest[:12]}</footer></main></body></html>'''
 
 
-def main():
+def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--run", required=True)
     p.add_argument("--summary")
     p.add_argument("--out")
-    args = p.parse_args()
+    args = p.parse_args(argv)
     directory = Path(args.run).resolve()
     summary = Path(args.summary) if args.summary else directory / "summary.json"
     out = Path(args.out) if args.out else directory / "summary.html"

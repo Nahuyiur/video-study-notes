@@ -14,7 +14,7 @@ Verification:
 
 ```bash
 python3 -m unittest discover -s tests -v
-python3 -m compileall -q scripts
+python3 -m compileall -q scripts video_notes
 git diff --check
 ```
 

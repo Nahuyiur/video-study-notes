@@ -2,27 +2,20 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 import hashlib
-import importlib.util
 import json
-import os
 import shutil
 import subprocess
 import sys
 import uuid
 from pathlib import Path
-from urllib.parse import urlencode
 
-from core import (PRESETS, bounded_segments, ensure_open, load, nearby, now,
+from .run import (PRESETS, bounded_segments, ensure_open, load, nearby, now,
                   offset_segments, open_run, sample_times, save, segments_from, selected_duration,
                   stamp, transcript_coverage)
 
-UPSTREAM = Path(__file__).parent / "upstream"
-spec = importlib.util.spec_from_file_location("bililens_extractor", UPSTREAM / "bilibili_extract.py")
-bili = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(bili)
-
+UPSTREAM = Path(__file__).resolve().parents[1] / "scripts/upstream"
+from .sources import resolve_source, media_input as source_media, normalize_source
 
 def execute(command, timeout=90):
     try:
@@ -39,25 +32,15 @@ def probe(path):
     return float(execute(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)], 20).strip())
 
 
-def native_extract(video, page, use_cookie):
-    args = argparse.Namespace(video=video, page=page, subtitle_language=None,
-                              include_danmaku=False, danmaku_limit=0,
-                              use_env_cookie=use_cookie, retries=2)
-    return asyncio.run(bili.extract(args))
-
-
 def prepare(args):
     directory = Path(args.out).resolve()
     if (directory / "run.json").exists():
         raise ValueError("Run already exists; use its cached materials or choose a new output directory")
     if args.source_json:
-        source = load(args.source_json)
-    elif Path(args.video).is_file():
-        source = {"source": {"platform": "local", "canonical_url": None},
-                  "metadata": {"title": Path(args.video).stem, "duration_seconds": probe(args.video)},
-                  "selection": {"page": 1}, "content": {"source_type": "none", "segments": []}}
+        source = normalize_source(load(args.source_json))
     else:
-        source = native_extract(args.video, args.page, args.use_env_cookie)
+        source = resolve_source(args.video, args.page, args.use_env_cookie,
+                                getattr(args, "language", None))
     if args.transcript:
         source["content"] = {"source_type": "provided_transcript", "segments": segments_from(load(args.transcript))}
     rows = segments_from(source)
@@ -71,7 +54,7 @@ def prepare(args):
     chosen, processed_end = bounded_segments(rows, args.start, end, int(budget["text_chars"] * .8))
     directory.mkdir(parents=True, exist_ok=True)
     save(directory / "source.json", source)
-    run = {"schema_version": 1, "run_id": str(uuid.uuid4()), "started_at": now(), "status": "prepared",
+    run = {"schema_version": 2, "run_id": str(uuid.uuid4()), "started_at": now(), "status": "prepared",
            "video": str(Path(args.video).resolve()) if Path(args.video).is_file() else args.video,
            "local_media": str(Path(args.video).resolve()) if Path(args.video).is_file() else None,
            "preset": args.preset, "budget": budget,
@@ -84,7 +67,7 @@ def prepare(args):
            "api_calls": [], "read_text_chars_reserved": 0, "session_log": args.session_log,
            "ledger": getattr(args, "ledger", None),
            "authenticated": bool(source.get("source", {}).get("authenticated"))}
-    from usage import counter_snapshot
+    from .usage import counter_snapshot
     run["native_counter_before"] = counter_snapshot(args.session_log)
     save(directory / "segments.json", chosen)
     save(directory / "run.json", run)
@@ -95,30 +78,7 @@ def prepare(args):
 
 
 def media_input(directory, run, kind, use_cookie=False, override=None, height=720):
-    if override:
-        if not Path(override).is_file():
-            raise ValueError("--media must be a local file")
-        return str(Path(override).resolve()), []
-    if run.get("local_media"):
-        return run["local_media"], []
-    source = load(directory / "source.json")
-    client = bili.BilibiliClient(use_env_cookie=use_cookie, retries=2)
-    query = urlencode({"bvid": source["metadata"]["bvid"], "cid": source["selection"]["cid"], "fnval": 16, "qn": 80 if height > 720 else 64})
-    data = client.get_json(f"https://api.bilibili.com/x/player/playurl?{query}", "media", source["source"]["canonical_url"])["data"]
-    streams = data.get("dash", {}).get(kind, [])
-    if not streams:
-        raise RuntimeError("No accessible DASH stream; supply a local media file")
-    if kind == "video":
-        suitable = [s for s in streams if s.get("height", 9999) <= height]
-        stream = max(suitable, key=lambda s: (s.get("height", 0), str(s.get("codecs", "")).startswith("avc"))) if suitable else min(streams, key=lambda s: s.get("height", 9999))
-    else:
-        stream = min(streams, key=lambda s: s.get("bandwidth", 0))
-    url = stream.get("baseUrl") or stream.get("base_url")
-    if not url:
-        raise RuntimeError("Media stream contains no playable URL")
-    # Authentication is only for the Bilibili API; never forward session cookies to a CDN.
-    headers = f"Referer: {source['source']['canonical_url']}\r\nUser-Agent: {bili.USER_AGENT}\r\n"
-    return url, ["-headers", headers, "-rw_timeout", "15000000"]
+    return source_media(directory, run, kind, use_cookie, override, height)
 
 
 def frames(args):
@@ -188,7 +148,7 @@ def transcribe(args):
         execute(["ffmpeg", "-hide_banner", "-loglevel", "error", *options, "-ss", str(start), "-i", media,
                  "-t", str(end - start), "-vn", "-ar", "16000", "-ac", "1", "-y", str(audio)], 300)
     raw = directory / "asr.json"
-    execute(["uv", "run", "--with-requirements", str(Path(__file__).parent / "requirements-asr.txt"),
+    execute(["uv", "run", "--with-requirements", str(UPSTREAM.parent / "requirements-asr.txt"),
              "python", str(UPSTREAM / "transcribe_faster_whisper.py"),
              str(audio), "--model", args.model, "--language", args.language, "--json", str(raw)], 1800)
     transcript = load(raw)
@@ -207,7 +167,7 @@ def transcribe(args):
     print(json.dumps({"status": run["transcript_status"], "processed_range": run["processed_range"], "remaining_range": run["remaining_range"]}))
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("prepare"); p.add_argument("--video", required=True); p.add_argument("--out", required=True)
@@ -221,14 +181,12 @@ def main():
     p = sub.add_parser("transcribe"); p.add_argument("--run", required=True); p.add_argument("--media")
     p.add_argument("--model", choices=("base", "small"), default="small"); p.add_argument("--language", default="auto")
     p.add_argument("--use-env-cookie", action="store_true"); p.set_defaults(func=transcribe)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     started = now()
     try:
         args.func(args)
-    except (ValueError, RuntimeError, OSError, KeyError, bili.ParserError) as exc:
+    except (ValueError, RuntimeError, OSError, KeyError) as exc:
         message = str(exc)
-        if isinstance(exc, bili.ParserError):
-            message = f"Bilibili {exc.stage} retrieval failed; check access or supply local materials"
         if args.command == "prepare":
             record_failed_prepare(args, started, message)
         print(json.dumps({"ok": False, "message": message}, ensure_ascii=False), file=sys.stderr)
@@ -245,14 +203,14 @@ def record_failed_prepare(args, started, message):
     if not (directory / "source.json").exists():
         save(directory / "source.json", {"source": {"canonical_url": None}, "metadata": {"title": None}, "selection": {"page": args.page}})
     save(directory / "segments.json", [])
-    save(directory / "run.json", {"schema_version": 1, "run_id": str(uuid.uuid4()), "started_at": started,
+    save(directory / "run.json", {"schema_version": 2, "run_id": str(uuid.uuid4()), "started_at": started,
          "status": "prepare_failed", "video": args.video, "preset": args.preset, "budget": PRESETS[args.preset],
          "video_duration_seconds": None, "requested_range": [args.start, args.end], "processed_range": [args.start, args.start],
          "remaining_range": None, "content_source": "none", "transcript_status": "unavailable",
          "transcript_coverage_seconds": 0, "frames": [], "packs": [], "api_calls": [],
          "ledger": getattr(args, "ledger", None), "session_log": args.session_log, "native_counter_before": None})
     save(directory / "prepare_error.json", {"message": message})
-    from usage import finish
+    from .usage import finish
     finish(argparse.Namespace(run=str(directory), ledger=getattr(args, "ledger", None), read_packs="", status="failed",
                               native_usage=None, quota_before=None, quota_after=None))
 

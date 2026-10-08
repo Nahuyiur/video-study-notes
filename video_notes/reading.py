@@ -7,7 +7,7 @@ import math
 import sys
 from pathlib import Path
 
-from core import ensure_open, load, open_run, save, stamp
+from .run import ensure_open, load, open_run, save, stamp
 
 
 def make_sheet(frames, output):
@@ -87,11 +87,11 @@ def prepare_pack(directory, kind, ids=None):
             "frame_count": len(selected), "text_chars": len(text), "remaining_batches": run["budget"]["read_batches"] - len(run["packs"])}
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", required=True); parser.add_argument("--kind", choices=("overview", "detail"), required=True)
     parser.add_argument("--ids", help="Comma-separated IDs; defaults to unused frames of the selected kind")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
         result = prepare_pack(args.run, args.kind, args.ids.split(",") if args.ids else None)
         print(json.dumps(result, ensure_ascii=False)); return 0

@@ -10,11 +10,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-import core
-import read_pack
-import usage
-import video
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] ))
+from video_notes import run as core
+from video_notes import reading as read_pack
+from video_notes import usage
+from video_notes import materials as video
 
 
 class Contracts(unittest.TestCase):

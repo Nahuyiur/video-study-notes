@@ -71,7 +71,7 @@ git clone https://github.com/Nahuyiur/video-study-notes.git \
 
 ```bash
 python3 -m unittest discover -s tests -v
-python3 -m compileall -q scripts
+python3 -m compileall -q scripts video_notes
 ```
 
 39 项测试覆盖时间轴/分 P、预算与续读、失败和完成状态、用量计数与去重、HTML 转义、嵌入图片和部分覆盖。当前检查在本地运行；[GitHub Actions 配置模板](ci/github-actions-tests.yml) 已提供，计划检查 Python 3.11/3.12，**尚未启用**。发布账号当前令牌缺少 `workflow` 权限，待具有相应权限后把模板放入 `.github/workflows/tests.yml`。单元测试/CI 通过也不等于 B站接口、真实 ASR 或所有视频都可用。

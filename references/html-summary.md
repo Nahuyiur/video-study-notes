@@ -41,7 +41,7 @@
 ## 生成和验收
 
 ```bash
-python3 "$S/scripts/render_summary.py" --run "$R"
+python3 "$S/scripts/video_notes.py" html --run "$R"
 ```
 
 默认读取 `$R/summary.json`，输出 `$R/summary.html`；`--summary`、`--out` 可改变位置。HTML 无 CDN、外部字体或额外依赖，图片嵌入文件内。保存/移动 HTML 后图片仍可用；来源链接需要网络。页面目录、折叠区和打印由浏览器原生功能支持。

@@ -8,8 +8,8 @@ import unittest
 from pathlib import Path
 from html.parser import HTMLParser
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-import render_summary
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from video_notes.delivery import html as render_summary
 
 
 class Tags(HTMLParser):

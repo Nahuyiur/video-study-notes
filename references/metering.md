@@ -16,7 +16,7 @@
 默认 skill 不调用付费 API。若用户选择独立 API，由现有可信工具调用并保存仅含 id/model/usage 的回执。不要把 API key 放进文件或输出。记录命令：
 
 ```bash
-python3 "$S/scripts/usage.py" add-api --run "$R" --response usage-receipt.json --prices verified-prices.json --stage vision
+python3 "$S/scripts/video_notes.py" add-api --run "$R" --response usage-receipt.json --prices verified-prices.json --stage vision
 ```
 
 支持 Responses 和 Chat Completions 的真实 usage 格式；`id` 防止同一个回执重复计费。缺 usage 直接失败，缺价格保留真实 token 而费用为 null。收费依据真实 API usage，不另加假设的图片 token（图片通常已计入输入）。输出 token 已包含推理计数时也不能重复加 reasoning token。
