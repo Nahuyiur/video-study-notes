@@ -92,7 +92,7 @@ def _usage_snapshot(usage):
     result["video"] = {key: copy.deepcopy(usage.get("video", {}).get(key)) for key in
                        ("title", "url", "page", "duration_seconds", "processed_range", "processed_minutes", "remaining_range")}
     # Public counters retain provenance, never receipt contents or credential-bearing links.
-    result["api_calls"] = [{key: copy.deepcopy(row[key]) for key in ("id", "stage", "model", "tokens", "cost") if key in row}
+    result["api_calls"] = [{key: copy.deepcopy(row[key]) for key in ("id", "stage", "model", "tokens", "cost", "call_id", "provider_response_id", "request_hash", "reading_method") if key in row}
                            for row in usage.get("api_calls", [])]
     return result
 
@@ -137,10 +137,23 @@ def create_snapshot(run_dir):
         if set(segment_ids) - seen:
             raise ValueError("Reading pack references unavailable segments")
         declared = pack.get("claimed_read") is True
+        method = pack.get("reading_method", "native_agent_declaration")
+        api_provenance = {}
+        if method == "api_material_submission_and_response":
+            receipt = next((row for row in usage.get("api_calls", []) if row.get("call_id") == pack.get("api_call_id")), None)
+            if (not receipt or receipt.get("reading_method") != method or receipt.get("request_hash") != pack.get("request_hash")
+                    or receipt.get("inputs", {}).get("pack_id") != pack.get("id")
+                    or receipt.get("inputs", {}).get("frame_ids") != frame_ids
+                    or receipt.get("inputs", {}).get("segment_ids") != segment_ids):
+                raise ValueError("API reading pack provenance differs from frozen usage receipts")
+            api_provenance = {"reading_method": method, "api_call_id": pack["api_call_id"], "request_hash": pack["request_hash"]}
+        elif method != "native_agent_declaration":
+            raise ValueError("Unknown reading method")
         reading.append({"id": str(pack.get("id", f"p{index:03d}")), "kind": pack.get("kind"),
                         "frame_ids": frame_ids, "segment_ids": segment_ids, "claimed_read": declared,
                         "text_chars": pack.get("text_chars", 0), "images": pack.get("images", 0),
-                        "provenance": "legacy_overview_transcript" if inferred else "explicit_pack_ids"})
+                        "provenance": method if api_provenance else "legacy_overview_transcript" if inferred else "explicit_pack_ids",
+                        **api_provenance})
         if declared:
             read_frames.update(frame_ids)
             read_segments.update(segment_ids)
@@ -401,20 +414,32 @@ def scope_text(note):
 def usage_metrics(note):
     usage = note["snapshot"]["usage"]
     materials, tokens, cost = usage.get("materials", {}), usage.get("tokens", {}), usage.get("cost", {})
-    actual = (tokens.get("native_actual") or {}).get("total_tokens")
+    native = (tokens.get("native_actual") or {}).get("total_tokens")
+    api_actual = (tokens.get("api_actual") or {}).get("total_tokens")
+    api_calls = usage.get("api_calls", [])
     processed = usage.get("video", {}).get("processed_minutes")
     if processed is None:
         left, right = note["snapshot"]["run"]["processed_range"]
         processed = (right - left) / 60
     estimate = tokens.get("material_text_estimate")
-    return [("处理时长", f"{processed:g} 分钟"),
-            ("本地候选扫描帧", str(materials.get('candidate_frames_scanned', 0))),
-            ("概览 / 细读帧", f"{materials.get('overview_frames_extracted', 0)} / {materials.get('detail_frames_extracted', 0)}"),
-            ("已声明阅读帧", str(len(note["snapshot"]["frames"]))),
-            ("实际总 token", str(actual) if actual is not None else "不可得"),
-            ("文字材料粗估", f"{estimate:,} token" if estimate is not None else "不可得"),
-            ("独立 API 费用", str(cost["api_usd"]) + " USD" if cost.get("api_usd") is not None else "未记录"),
-            ("原生美元费用", "不可换算")]
+    has_api_reading = any(row.get("reading_method") == "api_material_submission_and_response" for row in note["snapshot"].get("reading", []))
+    result = [("处理时长", f"{processed:g} 分钟"),
+              ("本地候选扫描帧", str(materials.get('candidate_frames_scanned', 0))),
+              ("概览 / 细读帧", f"{materials.get('overview_frames_extracted', 0)} / {materials.get('detail_frames_extracted', 0)}"),
+              ("API 已提交画面帧" if has_api_reading else "已声明阅读帧", str(len(note["snapshot"]["frames"]))),
+              ("原生实际 token" if api_calls else "实际总 token", str(native) if native is not None else "不可得")]
+    if api_calls:
+        result.append(("API 实际总 token", str(api_actual) if api_actual is not None else "不可得"))
+        if tokens.get("api_unknown_token_calls"):
+            subtotal = (tokens.get("api_known_subtotal") or {}).get("total_tokens")
+            result += [("API 已知 token 小计", str(subtotal) if subtotal is not None else "不可得"),
+                       ("API 未知计数调用", str(tokens["api_unknown_token_calls"]))]
+    result += [("文字材料粗估", f"{estimate:,} token" if estimate is not None else "不可得"),
+               ("独立 API 费用", str(cost["api_usd"]) + " USD" if cost.get("api_usd") is not None else "不可得" if api_calls else "未记录")]
+    if cost.get("api_unknown_cost_calls") and cost.get("api_known_subtotal_usd") is not None:
+        result.append(("API 已知费用小计", str(cost["api_known_subtotal_usd"]) + " USD（总费用未知）"))
+    result.append(("原生美元费用", "不可换算"))
+    return result
 
 
 def usage_explanations(note):
@@ -422,9 +447,14 @@ def usage_explanations(note):
     elapsed = usage.get("elapsed_seconds")
     prefix = f"提取与阅读记录耗时 {elapsed / 60:.1f} 分钟；" if elapsed is not None else ""
     result = [prefix + "文字材料估算不含图片、推理、工具及历史上下文。订阅额度不折算为美元。"]
+    api_engine = note.get("provenance", {}).get("kind") == "api_engine"
     if not usage.get("api_calls"):
         result.append("该 run 未记录独立付费 API 调用。")
-    result.append("此处为 prepare 到 finish 冻结的运行用量；笔记撰写、后续对话与发布不包含在此窗口中。导出脚本无模型调用。")
+    if api_engine:
+        result.append("API 概览、细读（如有）与笔记生成调用均计入 finish 前冻结的用量；后续导出不调用模型。未知调用计数或价格使总计保留未知，已知小计不代表完整账单。")
+        result.append("API 阅读回执证明指定字幕和 JPEG 已提交并获得响应，不保证模型逐图理解正确或逐页覆盖。费用按实际 counters 与提供的可靠价格计算，不能替代供应商账单。")
+    else:
+        result.append("此处为 prepare 到 finish 冻结的运行用量；笔记撰写、后续对话与发布不包含在此窗口中。导出脚本无模型调用。")
     if note.get("provenance", {}).get("kind") == "legacy_summary_import":
         result.append("从旧摘要导入：段落缺少精确证据映射；时间轴引用按时间重合推定，不能替代语义核对。")
     if note.get("usage_note"):
