@@ -119,6 +119,8 @@ def open_run(directory):
 
 
 def ensure_open(run):
+    if run.get("api_pending"):
+        raise ValueError("An API request has an unknown outcome; resume the API task before changing or finishing this run")
     if run.get("status") == "finished":
         raise ValueError("Run is finished; start a new run for further reading")
 
