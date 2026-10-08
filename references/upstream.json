@@ -1,0 +1,27 @@
+{
+  "repository": "AntaresGG/BiliBiliVideoParser",
+  "commit": "dd4f3fe87208826bc0d2358d3e0d16099df74acb",
+  "license": "MIT",
+  "files": [
+    {
+      "path": "scripts/upstream/bilibili_extract.py",
+      "upstream_path": "plugins/bilibili-video-parser/skills/bilibili-video-parser/scripts/bilibili_extract.py",
+      "sha256": "40b5937cb85aa5422e405cdbaab7ca6ffb9e6047e0fcafb8616eac1512875162"
+    },
+    {
+      "path": "scripts/upstream/transcribe_faster_whisper.py",
+      "upstream_path": "plugins/bilibili-video-parser/skills/bilibili-video-parser/scripts/transcribe_faster_whisper.py",
+      "sha256": "5855d25b330cf49e09626f200a97bc8e7d8439d4f9877dc78e086ef912f1a2df"
+    },
+    {
+      "path": "scripts/upstream/LICENSE",
+      "upstream_path": "LICENSE",
+      "sha256": "7b0448f4e8566e38617ad6fcd4f1f016768fd57b319e65ea5447925871699613"
+    }
+  ],
+  "extraction_design_reference": {
+    "repository": "ezbug/bilibili-to-obsidian",
+    "commit": "0857894ff055300fb1fdc9070456aaa16c6792f9",
+    "reused": "Bilibili DASH video/audio separation, FFmpeg timestamped extraction, overview followed by detail review. No unlicensed project-specific Python copied."
+  }
+}
