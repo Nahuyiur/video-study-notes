@@ -4,15 +4,20 @@ import sys
 
 def dispatch(argv):
     command = argv[0] if argv else "--help"
+    if command in ("--help", "-h"):
+        print("usage: video_notes.py COMMAND [options]\n\n"
+              "Commands: prepare, frames, transcribe, read, finish, note, export, continue, add-api, summary\n"
+              "Use COMMAND --help for its options. Actual understanding is performed by the Codex skill.")
+        return 0
+    if command in ("note", "export"):
+        from .notes import main
+        return main(argv)
     if command == "read":
         from .reading import main
         return main(argv[1:])
     if command in ("finish", "add-api", "summary"):
         from .usage import main
         return main(argv)
-    if command == "html":
-        from .delivery.html import main
-        return main(argv[1:])
     from .materials import main
     return main(argv)
 
@@ -23,7 +28,7 @@ def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     command = argv[0] if argv else "--help"
     directory = None
-    for flag in ("--run", "--out" if command == "prepare" else "--run"):
+    for flag in (("--out",) if command in ("prepare", "continue") else ("--run",)):
         if flag in argv and argv.index(flag) + 1 < len(argv):
             directory = argv[argv.index(flag) + 1]
             break

@@ -33,7 +33,7 @@ git clone https://github.com/Nahuyiur/video-study-notes.git \
 重点解释方法和图示，生成 HTML 学习笔记。
 ```
 
-也可以指定时间范围、学习重点或本地视频。完整工作流见 [SKILL.md](SKILL.md)，HTML 内容结构见 [references/html-summary.md](references/html-summary.md)。
+也可以指定时间范围、学习重点或本地视频。完整工作流见 [SKILL.md](SKILL.md)，统一笔记结构见 [references/note-schema.md](references/note-schema.md)。HTML 和 Markdown 消费同一份冻结笔记，切换格式不重新读视频。
 
 ## 工作流
 
@@ -42,7 +42,7 @@ git clone https://github.com/Nahuyiur/video-study-notes.git \
     → 提取字幕，缺失时本地 ASR
     → 概览关键帧 + 有限的局部细读
     → Codex 结合画面解释内容
-    → 生成 summary.json / summary.html
+    → 保存版本化 StudyNote / 导出 HTML、Markdown
     → 保存 usage.json 和共享用量账本
 ```
 

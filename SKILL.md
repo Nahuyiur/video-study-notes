@@ -63,27 +63,25 @@ uv run --with pillow python "$S/scripts/video_notes.py" read --run "$R" --kind d
 
 View the returned individual images and combine them with nearby subtitles. If small text remains illegible, say what cannot be read; do not fill a diagram or equation from memory. Can omit this step if overview already resolves the requested content. Additional targeted packs may use `--ids f0001,f0002` within the unchanged caps.
 
-## 4. Generate the HTML video summary and record
+## 4. Save a reusable note and export
 
-The default deliverable is **a readable, self-contained Chinese HTML video summary**, not only an inline reply or a transcript dump. Draft `$R/summary.json` from the materials already read, following [html-summary.md](references/html-summary.md). Start with the video's central message, explain the concepts/mechanisms in connected prose, give a source timeline, and choose a few actually viewed frames whose captions explain what the visuals add. Distinguish instructor claims, visible evidence and your interpretation. Adapt the depth to the video and request; do not force every video into a research-paper report. Carry partial coverage and missing speech into the HTML prominently. Obsidian/publication are not part of this workflow. Honor an explicit user request for another format.
+Write `$R/note-input.json` from the materials actually read, using [note-schema.md](references/note-schema.md). Use the central message, connected explanations, original-video time points and a few useful figures. Each block has explicit `evidence_refs`: `segment:s0001` / `frame:f0001` shown in the pack. Distinguish `speaker`, `agent` and `uncertain`. References establish which materials were read, not semantic truth. Check that each claim follows from those materials.
 
-Before the final answer, finalize once with the IDs of packs you actually viewed/read:
+Finalize with the packs actually read, then freeze the note and export:
 
 ```bash
 python3 "$S/scripts/video_notes.py" finish --run "$R" --read-packs 'p001,p002' --status complete
+python3 "$S/scripts/video_notes.py" note --run "$R" --input "$R/note-input.json"
+python3 "$S/scripts/video_notes.py" export --run "$R" --format html
 ```
 
-Use `partial`, `visual_only`, `extraction_only` or `failed` honestly when applicable. `complete` requires the requested interval, transcript and visuals to have been read; it does not assert exhaustive frame coverage. `usage.json` and the shared JSONL ledger store duration, processed minutes, frames, packs, elapsed time and metering availability. Failed/partial invocations also get a row. Repeating `finish` must not create another charge/row.
+`complete` covers the requested interval with speech and sampled visuals; it does not assert exhaustive page coverage. Use `partial`, `visual_only`, `extraction_only` or `failed` when applicable. Unknown actual token/cost counters stay null. Repeating `finish` records no second video-processing row.
 
-After drafting the summary and finalizing usage, render with the bundled standard-library helper:
+Default HTML is a self-contained offline file under `$R/exports/note-v001.html`. Honor requested Markdown with `--format md` or both with `--format html,md`; `--text-only` omits MD images and keeps their explanations. Keep the generated MD asset folder with the file. Both formats preserve scope and actual usage from the immutable note snapshot. Export scripts do not call models or media acquisition.
 
-```bash
-python3 "$S/scripts/video_notes.py" html --run "$R"
-```
+Revisions reuse materials already read; a changed note creates a new version, while identical content reuses the version. Old `summary.json` can be imported explicitly via `note --legacy-summary --input ...`; inferred old references are marked and require semantic review. Never automatically rewrite historical run/usage records. Changing depth or focus may need new understanding and usage; changing layout alone does not.
 
-It writes `$R/summary.html`, embeds the selected frame images and styles for offline viewing, and reads real scope/usage from the run rather than asking the model to invent them. Verify the page opens, the summary/figures are readable, and timeline links work. Open the HTML in an available Codex panel/browser and give the user its clickable file link plus a brief takeaway. Reuse cached materials when revising the summary: do not repeat ASR or image-reading just to change the output format.
-
-In the final answer include one short usage line, e.g. **本次处理 24 分钟；概览 12 帧、细读 4 帧；实际 token 暂不可得，文字材料约 N token，另含图片与推理开销。** Do not call the material estimate the total. Report observed API cost only when applicable; never convert Codex subscription quota into USD.
+Verify the actual HTML opens, images and scope are readable, and timeline links work. Give the user the requested output link and a short takeaway. Include one compact usage line: processed minutes, extracted/read frames, actual tokens when observed or clearly labeled unknown, and actual API cost only when available. Do not substitute text estimates for total tokens or convert subscription quota to USD.
 
 Read [metering.md](references/metering.md) when actual counters, API pricing, quota snapshots or historical comparisons are requested. Read [sources.md](references/sources.md) for provenance and known acquisition boundaries. Historical stats:
 

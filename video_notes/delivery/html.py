@@ -1,31 +1,18 @@
-"""Render an already-read video summary as one offline HTML file; no AI calls."""
+"""One offline HTML renderer consuming validated, frozen StudyNotes."""
 from __future__ import annotations
 
-import argparse
 import base64
-import hashlib
 import html
-import json
-import math
 from pathlib import Path
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from ..run import load, stamp
+from ..notes import (digest, frame_asset, safe_url, scope_text, usage_explanations,
+                     usage_metrics, validate_note)
+from ..run import stamp
+from ..sources import timestamp_url
 
 
 def esc(value):
     return html.escape(str(value), quote=True)
-
-
-def safe_url(value):
-    value = str(value)
-    parts = urlsplit(value)
-    if parts.scheme not in ("https", "http") or not parts.netloc or parts.username or parts.password:
-        raise ValueError("Source links must be ordinary HTTP(S) URLs without credentials")
-    return value
-
-
-from ..sources import timestamp_url
 
 
 def jump(url, second):
@@ -36,26 +23,62 @@ def link(label, url):
     return f'<a href="{esc(safe_url(url))}" target="_blank" rel="noopener noreferrer">{esc(label)} ↗</a>'
 
 
-def items(rows):
-    return "<ul>" + "".join(f"<li>{esc(row)}</li>" for row in rows) + "</ul>" if rows else ""
+def items(rows, ordered=False):
+    tag = "ol" if ordered else "ul"
+    return f"<{tag}>" + "".join(f"<li>{esc(row)}</li>" for row in rows) + f"</{tag}>" if rows else ""
 
 
-def interval(run, start, end):
-    a, b = run["processed_range"]
-    if not all(isinstance(x, (int, float)) and math.isfinite(x) for x in (start, end)):
-        raise ValueError("Timeline bounds must be finite seconds")
-    if not a <= start < end <= b:
-        raise ValueError("Timeline entry is outside the processed interval")
+def _evidence(note, refs):
+    url = note["snapshot"]["source"].get("canonical_url")
+    segments = {"segment:" + row["id"]: row["start"] for row in note["snapshot"]["segments"]}
+    frames = {"frame:" + row["id"]: row["timestamp"] for row in note["snapshot"]["frames"]}
+    labels = []
+    for ref in refs:
+        second = {**segments, **frames}[ref]
+        label = f"{ref} · {stamp(second)}"
+        labels.append(link(label, jump(url, second)) if url else esc(label))
+    return '<p class="muted evidence">证据：' + " · ".join(labels) + "</p>" if labels else ""
 
 
-def render(directory, data):
+def _figure(directory, note, row):
+    frame = next(f for f in note["snapshot"]["frames"] if f["id"] == row["frame_id"])
+    encoded = base64.b64encode(frame_asset(directory, note, frame["id"]).read_bytes()).decode("ascii")
+    url = note["snapshot"]["source"].get("canonical_url")
+    time = stamp(frame["timestamp"])
+    time_link = link(time + " · 返回视频", jump(url, frame["timestamp"])) if url else esc(time)
+    return (f'<figure><div class="figure-top"><h3>{esc(row.get("title", ""))}</h3><span>{time_link}</span></div>'
+            f'<img src="data:image/jpeg;base64,{encoded}" alt="{esc(row.get("title", ""))}" loading="lazy">'
+            f'<figcaption>{esc(row.get("caption", ""))}</figcaption>{_evidence(note, row.get("evidence_refs", []))}</figure>')
+
+
+def _block(directory, note, row):
+    kind = row["type"]
+    if kind == "paragraph":
+        body = f'<p>{esc(row["text"])}</p>'
+    elif kind == "list":
+        body = items(row["items"], row["ordered"])
+    elif kind == "code":
+        body = f'<pre><code class="language-{esc(row["language"])}">{esc(row["text"])}</code></pre>'
+    elif kind == "formula":
+        body = f'<pre class="formula" aria-label="公式源码">{esc(row["text"])}</pre>'
+    elif kind == "table":
+        body = '<div class="table-scroll"><table><thead><tr>' + "".join(f'<th>{esc(c)}</th>' for c in row["headers"]) + '</tr></thead><tbody>'
+        body += "".join('<tr>' + "".join(f'<td>{esc(c)}</td>' for c in cells) + '</tr>' for cells in row["rows"])
+        body += '</tbody></table></div>'
+    else:
+        return _figure(directory, note, row)
+    if row["attribution"] != "speaker":
+        body += '<p class="muted">' + ("Agent 解读" if row["attribution"] == "agent" else "尚不确定") + '</p>'
+    return body + _evidence(note, row["evidence_refs"])
+
+
+def render_note(directory, note):
+    """Render only a frozen note; never reopen acquisition or accounting artifacts."""
+    validate_note(note)
     directory = Path(directory).resolve()
-    run, usage = load(directory / "run.json"), load(directory / "usage.json")
-    if run["status"] != "finished" or usage["run_id"] != run["run_id"]:
-        raise ValueError("Finalize this run's usage before rendering")
-    if not str(data.get("title", "")).strip() or not str(data.get("takeaway", "")).strip():
-        raise ValueError("A summary needs a title and a substantive takeaway")
-    url = usage["video"].get("url")
+    snapshot = note["snapshot"]
+    run, usage = snapshot["run"], snapshot["usage"]
+    url = snapshot["source"].get("canonical_url")
     if url:
         safe_url(url)
     chunks, nav = [], []
@@ -65,97 +88,35 @@ def render(directory, data):
             nav.append(f'<a href="#{identifier}">{esc(title)}</a>')
             chunks.append(f'<section id="{identifier}"><h2>{esc(title)}</h2>{body}</section>')
 
-    section("overview", "核心总结", f'<div class="takeaway">{esc(data["takeaway"])}</div>')
+    section("overview", "核心总结", f'<div class="takeaway">{esc(note["takeaway"])}</div>' + _evidence(note, note["takeaway_evidence_refs"]))
     body = ""
-    for row in data.get("sections", []):
-        body += f'<article><h3>{esc(row["title"])}</h3>'
-        body += "".join(f"<p>{esc(p)}</p>" for p in row.get("paragraphs", []))
-        body += items(row.get("bullets", [])) + "</article>"
+    for row in note["sections"]:
+        body += f'<article id="{esc(row["id"])}"><h3>{esc(row["title"])}</h3>'
+        body += "".join(_block(directory, note, block) for block in row["blocks"])
+        body += _evidence(note, row["evidence_refs"]) + '</article>'
     section("explanation", "内容解释", body)
-
     rows = []
-    for row in data.get("timeline", []):
-        interval(run, row["start"], row["end"])
+    for row in note["timeline"]:
         time = f'{stamp(row["start"])}–{stamp(row["end"])}'
         time = link(time, jump(url, row["start"])) if url else esc(time)
-        rows.append(f'<div class="moment"><div class="time">{time}</div><div><h3>{esc(row["title"])}</h3><p>{esc(row["text"])}</p></div></div>')
+        rows.append(f'<div class="moment"><div class="time">{time}</div><div><h3>{esc(row["title"])}</h3><p>{esc(row["text"])}</p>{_evidence(note, row["evidence_refs"])}</div></div>')
     section("timeline", "视频时间轴", "".join(rows))
-
-    viewed = {fid for p in run["packs"] if p.get("claimed_read") for fid in p["frame_ids"]}
-    frames = {f["id"]: f for f in run["frames"]}
-    cards = []
-    for row in data.get("visuals", []):
-        fid = row["frame_id"]
-        if fid not in viewed:
-            raise ValueError("Only actually read frames may appear in the summary")
-        frame = frames[fid]
-        path = Path(frame["path"]).resolve()
-        if not path.is_relative_to(directory / "frames"):
-            raise ValueError("Frame path must stay inside this run's frames folder")
-        picture = path.read_bytes()
-        if not picture.startswith(b"\xff\xd8\xff"):
-            raise ValueError("Expected a JPEG frame")
-        encoded = base64.b64encode(picture).decode("ascii")
-        time = stamp(frame["timestamp"])
-        time_link = link(time + " · 返回视频", jump(url, frame["timestamp"])) if url else esc(time)
-        cards.append(f'<figure><div class="figure-top"><h3>{esc(row["title"])}</h3><span>{time_link}</span></div><img src="data:image/jpeg;base64,{encoded}" alt="{esc(row["title"])}" loading="lazy"><figcaption>{esc(row["caption"])}</figcaption></figure>')
-    section("visuals", "关键画面与解释", "".join(cards))
-
-    status = usage["result_status"]
-    a, b = run["processed_range"]
-    scope = f"本次处理 {stamp(a)}–{stamp(b)}；视频/所选分 P 总时长 {stamp(run['video_duration_seconds'] or 0)}。"
-    scope += "讲解区间已处理；关键帧为抽样，不代表逐帧或逐页覆盖。" if status == "complete" else f"本次状态：{status}，请按已处理材料理解。"
-    if run.get("remaining_range"):
-        scope += "尚有未处理区间：" + "–".join(stamp(t) for t in run["remaining_range"]) + "。"
-    section("limits", "范围与边界", f'<p>{esc(scope)}</p>' + items(data.get("caveats", [])))
-
-    tokens, cost, materials = usage["tokens"], usage["cost"], usage["materials"]
-    native = tokens.get("native_actual")
-    actual = native.get("total_tokens") if native else None
-    metrics = [
-        ("处理时长", f'{usage["video"]["processed_minutes"]:g} 分钟'),
-        ("概览 / 细读帧", f'{materials["overview_frames_extracted"]} / {materials["detail_frames_extracted"]}'),
-        ("实际总 token", actual if actual is not None else "不可得"),
-        ("文字材料粗估", f'{tokens["material_text_estimate"]:,} token'),
-        ("独立 API 费用", str(cost["api_usd"]) + " USD" if cost["api_usd"] is not None else "未记录"),
-        ("原生美元费用", "不可换算"),
-    ]
-    body = '<div class="metrics">' + "".join(f'<div><span>{esc(k)}</span><strong>{esc(v)}</strong></div>' for k, v in metrics) + "</div>"
-    body += f'<p class="muted">提取与阅读记录耗时 {usage["elapsed_seconds"] / 60:.1f} 分钟；文字材料估算不含图片、推理、工具及历史上下文。订阅额度不折算为美元。</p>'
-    if not usage.get("api_calls"):
-        body += '<p class="muted">该 run 未调用独立付费 API。</p>'
-    if data.get("usage_note"):
-        body += f'<p class="muted">{esc(data["usage_note"])}</p>'
+    section("visuals", "关键画面与解释", "".join(_figure(directory, note, row) for row in note["figures"]))
+    section("limits", "范围与边界", f'<p>{esc(scope_text(note))}</p>' + items(note["caveats"]))
+    body = '<div class="metrics">' + "".join(f'<div><span>{esc(k)}</span><strong>{esc(v)}</strong></div>' for k, v in usage_metrics(note)) + '</div>'
+    body += "".join(f'<p class="muted">{esc(line)}</p>' for line in usage_explanations(note))
     section("usage", "本次用量", body)
-    sources = ([{"label": "原视频", "url": url}] if url else []) + data.get("sources", [])
-    section("sources", "来源", '<div class="sources">' + " · ".join(link(s["label"], s["url"]) for s in sources) + "</div>" if sources else "")
-
+    sources = ([{"label": "原视频", "url": url}] if url else []) + note["sources"]
+    section("sources", "来源", '<div class="sources">' + " · ".join(link(s["label"], s["url"]) for s in sources) + '</div>' if sources else "")
     style = (Path(__file__).resolve().parents[2] / "assets/summary.css").read_text()
-    digest = hashlib.sha256(json.dumps(data, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    style += '\npre{white-space:pre-wrap;overflow-wrap:anywhere;padding:1rem;background:#f5f5f2;border-radius:8px}code{font-family:monospace}.table-scroll{overflow:auto}table{border-collapse:collapse;width:100%}th,td{padding:.7rem;border:1px solid #ddd;text-align:left}.evidence{font-size:.78rem}.evidence a{overflow-wrap:anywhere}'
+    summary_hash = note.get("content_hash") or digest({key: value for key, value in note.items() if key != "snapshot"})
+    status = usage.get("result_status", "partial")
     coverage = "讲解全段 · 画面抽样" if status == "complete" else "材料覆盖有限 · " + status
-    subtitle = f'<p class="subtitle">{esc(data["subtitle"])}</p>' if data.get("subtitle") else ""
+    subtitle = f'<p class="subtitle">{esc(note["subtitle"])}</p>' if note.get("subtitle") else ""
+    left, right = run["processed_range"]
+    materials = usage.get("materials", {})
+    count = materials.get("overview_frames_extracted", 0) + materials.get("detail_frames_extracted", 0)
     return f'''<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="summary-sha256" content="{digest}"><title>{esc(data["title"])} · 视频总结</title><style>{style}</style></head>
-<body><aside><div class="brand">VIDEO NOTES<span>视频阅读笔记</span></div><nav aria-label="目录">{"".join(nav)}</nav><p class="aside-note">讲解与画面一起读<br>原视频时间戳可点击</p></aside><main><header><div class="eyebrow">视频总结 <span>{esc(coverage)}</span></div><h1>{esc(data["title"])}</h1>{subtitle}<div class="header-meta">{esc(stamp(a))}–{esc(stamp(b))} · {esc(usage["content_source"])} · {materials["overview_frames_extracted"] + materials["detail_frames_extracted"]} 个采样画面</div></header>{"".join(chunks)}<footer>图片已嵌入 · 支持离线阅读与浏览器打印 · 摘要版本 {digest[:12]}</footer></main></body></html>'''
-
-
-def main(argv=None):
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--run", required=True)
-    p.add_argument("--summary")
-    p.add_argument("--out")
-    args = p.parse_args(argv)
-    directory = Path(args.run).resolve()
-    summary = Path(args.summary) if args.summary else directory / "summary.json"
-    out = Path(args.out) if args.out else directory / "summary.html"
-    try:
-        result = render(directory, load(summary))
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(result, encoding="utf-8")
-    except (ValueError, KeyError, OSError, TypeError) as error:
-        p.exit(1, f"HTML summary failed: {error}\n")
-    print(json.dumps({"html": str(out.resolve()), "bytes": out.stat().st_size, "offline": True}, ensure_ascii=False))
-
-
-if __name__ == "__main__":
-    main()
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="summary-sha256" content="{summary_hash}"><title>{esc(note["title"])} · 视频总结</title><style>{style}</style></head>
+<body><aside><div class="brand">VIDEO NOTES<span>视频阅读笔记</span></div><nav aria-label="目录">{"".join(nav)}</nav><p class="aside-note">讲解与画面一起读<br>原视频时间戳可点击</p></aside><main><header><div class="eyebrow">视频总结 <span>{esc(coverage)}</span></div><h1>{esc(note["title"])}</h1>{subtitle}<div class="header-meta">{esc(stamp(left))}–{esc(stamp(right))} · {esc(usage.get("content_source", "unknown"))} · {count} 个采样画面</div></header>{"".join(chunks)}<footer>图片已嵌入 · 支持离线阅读与浏览器打印 · 摘要版本 {summary_hash[:12]}</footer></main></body></html>'''

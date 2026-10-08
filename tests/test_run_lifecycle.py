@@ -37,3 +37,18 @@ class Lifecycle(unittest.TestCase):
             run = load(root / "run/run.json")
             self.assertEqual(run["processed_range"], [600, 2400])
             self.assertEqual(run["remaining_range"], [2400, 5400])
+
+    def test_continuation_uses_remaining_scope_without_rewriting_parent(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); previous = root / "previous"
+            source = {"source": {"platform": "local"}, "metadata": {"title": "long", "duration_seconds": 5400}, "content": {"segments": []}}
+            save(previous / "source.json", source)
+            save(previous / "run.json", {"status":"finished", "run_id":"parent", "remaining_range":[1800,5400], "video":"unused", "preset":"economy"})
+            before = (previous / "run.json").read_bytes()
+            args = argparse.Namespace(run=str(previous),out=str(root / "next"),preset=None,session_log=None,ledger=None)
+            with contextlib.redirect_stdout(io.StringIO()): materials.continue_run(args)
+            self.assertEqual((previous / "run.json").read_bytes(),before)
+            next_run=load(root / "next/run.json")
+            self.assertEqual(next_run["processed_range"],[1800,3600])
+            self.assertEqual(next_run["remaining_range"],[3600,5400])
+            self.assertEqual(next_run["previous_run_id"],"parent")

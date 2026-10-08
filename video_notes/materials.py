@@ -189,6 +189,24 @@ def transcribe(args):
     print(json.dumps({"status": run["transcript_status"], "processed_range": run["processed_range"], "remaining_range": run["remaining_range"]}))
 
 
+def continue_run(args):
+    directory, previous = open_run(args.run)
+    if not previous.get("remaining_range"):
+        raise ValueError("This run has no remaining interval")
+    if previous.get("status") != "finished":
+        raise ValueError("Finish the previous run before continuing")
+    start, end = previous["remaining_range"]
+    prepare(argparse.Namespace(video=previous["video"], out=args.out,
+        source_json=str(directory / "source.json"), transcript=None, page=None,
+        start=start, end=end, preset=args.preset or previous["preset"],
+        session_log=args.session_log, ledger=args.ledger or previous.get("ledger"),
+        use_env_cookie=False))
+    target = Path(args.out).resolve()
+    run = load(target / "run.json")
+    run["previous_run_id"] = previous["run_id"]
+    save(target / "run.json", run)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -203,6 +221,9 @@ def main(argv=None):
     p = sub.add_parser("transcribe"); p.add_argument("--run", required=True); p.add_argument("--media")
     p.add_argument("--model", choices=("base", "small"), default="small"); p.add_argument("--language", default="auto")
     p.add_argument("--use-env-cookie", action="store_true"); p.set_defaults(func=transcribe)
+    p = sub.add_parser("continue"); p.add_argument("--run", required=True); p.add_argument("--out", required=True)
+    p.add_argument("--preset", choices=PRESETS); p.add_argument("--session-log"); p.add_argument("--ledger")
+    p.set_defaults(func=continue_run)
     args = parser.parse_args(argv)
     started = now()
     try:

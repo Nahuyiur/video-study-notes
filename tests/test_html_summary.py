@@ -10,6 +10,7 @@ from html.parser import HTMLParser
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from video_notes.delivery import html as render_summary
+from video_notes.notes import save_note
 
 
 class Tags(HTMLParser):
@@ -45,8 +46,13 @@ class Summary(unittest.TestCase):
         for name,data in [('run.json',self.run),('usage.json',self.usage)]:
             (self.directory/name).write_text(json.dumps(data))
 
+    def render(self, data=None):
+        # Historical fields are explicitly imported before entering the sole renderer.
+        note = save_note(self.directory, data if data is not None else self.data, legacy=True)
+        return render_summary.render_note(self.directory, note)
+
     def test_portable_images_and_no_external_runtime(self):
-        result=render_summary.render(self.directory,self.data)
+        result=self.render()
         parser=Tags();parser.feed(result)
         images=[v for k,v in parser.attrs if k=='src']
         self.assertEqual(len(images),1)
@@ -55,7 +61,7 @@ class Summary(unittest.TestCase):
 
     def test_source_markup_never_executes(self):
         self.data['takeaway']='<script>alert(1)</script><img src=x onerror=alert(2)>'
-        result=render_summary.render(self.directory,self.data)
+        result=self.render()
         parser=Tags();parser.feed(result)
         self.assertNotIn('script',parser.tags)
         self.assertFalse(any(k.startswith('on') for k,v in parser.attrs))
@@ -63,26 +69,26 @@ class Summary(unittest.TestCase):
 
     def test_unsafe_source_link_rejected(self):
         self.data['sources']=[{'label':'x','url':'javascript:alert(1)'}]
-        with self.assertRaises(ValueError):render_summary.render(self.directory,self.data)
+        with self.assertRaises(ValueError):self.render()
 
     def test_unread_frame_rejected(self):
         self.data['visuals'][0]['frame_id']='unread'
-        with self.assertRaises(ValueError):render_summary.render(self.directory,self.data)
+        with self.assertRaises(ValueError):self.render()
 
     def test_timeline_cannot_claim_outside_range(self):
         self.data['timeline'][0]['end']=1000
-        with self.assertRaises(ValueError):render_summary.render(self.directory,self.data)
+        with self.assertRaises(ValueError):self.render()
 
     def test_unknown_tokens_stay_unknown_and_jump_uses_seconds(self):
-        result=render_summary.render(self.directory,self.data)
+        result=self.render()
         self.assertIn('不可得',result);self.assertIn('文字材料粗估',result)
         self.assertIn('?t=114',result)
 
     def test_partial_scope_remains_visible(self):
         self.run['processed_range']=[0,65];self.run['remaining_range']=[65,328]
-        self.usage['result_status']='partial';self.save()
+        self.usage['result_status']='partial';self.run['frames']=[];self.run['packs']=[];self.save()
         source=copy.deepcopy(self.data);source['timeline']=source['timeline'][:1];source['visuals']=[]
-        result=render_summary.render(self.directory,source)
+        result=self.render(source)
         self.assertIn('尚有未处理区间',result);self.assertNotIn('讲解全段',result)
 
 

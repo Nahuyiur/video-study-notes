@@ -1,49 +1,13 @@
-# HTML 视频总结
+# HTML 输出
 
-默认交付 `$R/summary.html`，由同目录 `summary.json` 生成。正文是 Agent 在实际读完材料后写的总结；渲染器只排版，不做模型调用。不要以逐字稿或几行流程执行状态代替总结。
-
-正文顺序按读者理解安排：先给核心结论，再解释问题与方法/知识点，沿时间轴定位内容，用少量关键画面讲清细节，最后写结果与适用边界。课程可按概念和例题组织，讲座可按观点与论据组织。只放确实有用的章节，无须填满固定栏目。
-
-## `summary.json` 结构
-
-所有字符串为纯文本，不支持原始 HTML/Markdown。`sections`、`timeline`、`visuals`、`caveats`、`sources` 可以省略或为空；必须有非空 `title` 和 `takeaway`。示例中的内容必须换成所读视频的真实信息：
-
-```json
-{
-  "title": "视频主题的清楚标题",
-  "subtitle": "一句话说明内容和阅读重点",
-  "takeaway": "核心总结：视频解决什么问题，最值得记住的是什么。",
-  "sections": [
-    {
-      "title": "关键概念或机制",
-      "paragraphs": ["按因果顺序解释输入、处理过程和输出。"],
-      "bullets": ["仅在内容确实并列时使用列表。"]
-    }
-  ],
-  "timeline": [
-    {"start": 20, "end": 60, "title": "这一段的主题", "text": "说明这一段讲了什么。"}
-  ],
-  "visuals": [
-    {"frame_id": "f0001", "title": "画面说明", "caption": "指出图中可见元素，以及它如何帮助理解讲解。"}
-  ],
-  "caveats": ["讲者结论的适用范围、材料缺失或尚未核实的内容。"],
-  "sources": [{"label": "原始论文（仅在实际核查后添加）", "url": "https://example.org/paper"}],
-  "usage_note": "可选：复用旧 run 时，说明本次 HTML 整理不在旧用量记录的观测区间内。"
-}
-```
-
-`timeline` 的秒数必须在 `processed_range` 内。画面只引用 run 中属于已读 pack 的 `frame_id`；不新抽帧，不引用未读图片。渲染器自动嵌入原图、时间戳和返回原视频的链接；优先选已经细读的高分辨率图片。
-
-不要把 ASR 错词原样写进总结。利用已读画面修正明确的术语或数字；遇到冲突仍不能确定时保留不确定，不猜。视频实验结论应标明“视频报告/画面展示”；外部论文未读的实验细节不由背景知识补齐。
-
-用量从 `usage.json` 导入：未知 token/费用显示为未知，材料文字估算单列。正文和 captions 应在 `finish` 前起草；若只复用已完成 run 改 HTML，不重新 finish、不新增一次视频处理账单，用 `usage_note` 说明范围。
-
-## 生成和验收
+当前 HTML 从已验证的 StudyNote v2 生成，内容结构见 [note-schema.md](note-schema.md)。正文由 Agent 在实际读完图文材料后写出；渲染器只排版。
 
 ```bash
-python3 "$S/scripts/video_notes.py" html --run "$R"
+python3 "$S/scripts/video_notes.py" export --run "$R" --format html
 ```
 
-默认读取 `$R/summary.json`，输出 `$R/summary.html`；`--summary`、`--out` 可改变位置。HTML 无 CDN、外部字体或额外依赖，图片嵌入文件内。保存/移动 HTML 后图片仍可用；来源链接需要网络。页面目录、折叠区和打印由浏览器原生功能支持。
+默认文件 `$R/exports/note-v001.html` 为离线单文件，图像与样式嵌入，没有 CDN/字体/模型调用。公式显示可读源码；后续排版升级可单独进行。运行范围、已读帧和用量均来自冻结快照，不能让模型编造统计。
 
-用可用的浏览器实际打开一次，核对桌面阅读、较窄窗口下排版、图片说明和时间跳转链接。不能使用浏览器时说明未完成视觉预览，不伪造通过。最终给 HTML 文件链接和一两句重点，不再贴整份正文。
+旧 summary.json 使用 `note --legacy-summary` 显式导入；原始账本保持不变。原来的直接 html 命令已合并到 export，只有一份当前渲染器。
+
+实际打开页面检查摘要、图注、部分覆盖提示、较窄窗口和时间跳转。无法预览时记录未验证，不声称视觉检查通过。
