@@ -19,3 +19,9 @@ segments.json
 run.json
 usage.json
 packs/
+.video-study-notes/
+job.json
+public-manifest.json
+.service.lock
+.execution.lock
+.execution-active.json

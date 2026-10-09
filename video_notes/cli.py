@@ -6,9 +6,12 @@ def dispatch(argv):
     command = argv[0] if argv else "--help"
     if command in ("--help", "-h"):
         print("usage: video_notes.py COMMAND [options]\n\n"
-              "Commands: analyze, analyze-prepared, prepare, frames, transcribe, read, finish, note, export, publish, continue, add-api, summary\n"
+              "Commands: serve, analyze, analyze-prepared, prepare, frames, transcribe, read, finish, note, export, publish, continue, add-api, summary\n"
               "Use COMMAND --help for its options. analyze runs a configured vision API; read is the native Codex workflow.")
         return 0
+    if command == "serve":
+        from .product import main
+        return main(argv[1:])
     if command in ("analyze", "analyze-prepared"):
         from .engine import main
         return main(argv[1:])

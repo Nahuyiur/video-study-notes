@@ -106,4 +106,4 @@ python scripts/video_notes.py export --run runs/course --format md --text-only
 
 [BiliNote](https://github.com/JefferyHcool/BiliNote)已经结合可配置端点、真实图文输入、字幕优先和分块恢复。相关实现可核对[图文调用](https://github.com/JefferyHcool/BiliNote/blob/90940fde4d224d0f69ad99674f4af0a1ea52d3c4/backend/app/gpt/universal_gpt.py#L45-L81)及[分块恢复](https://github.com/JefferyHcool/BiliNote/blob/90940fde4d224d0f69ad99674f4af0a1ea52d3c4/backend/app/gpt/universal_gpt.py#L269-L339)。本项目借鉴这些机制，复用自己的素材、证据、预算和导出结构；没有复制或执行竞品代码。相似功能并非原创性主张，质量与成本需要实际视频比较。
 
-本轮先提供共用 Python/CLI 核心。HTTP 服务以后可以作为薄入口调用同一核心；服务鉴权、远程输入与任务隔离需另行设计。原生视频接口、多模型自动路由、长课自动连续处理不在当前入口中。
+独立 Python/CLI 和[本地网页](local-product.md)共用这个核心。网页管理受控任务与独立分析进程，不复制素材、理解或导出实现。其入口只监听本机，查看历史和下载不调用模型。原生视频接口、多模型自动路由、长课自动连续处理不在当前入口中。

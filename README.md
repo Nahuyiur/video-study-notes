@@ -2,7 +2,7 @@
 
 把视频中的**讲解、关键画面和时间轴**整理成 HTML、Markdown 或飞书学习笔记。
 
-它可以作为 Codex skill，也可以在 Codex 之外，通过 Python/CLI 调用你配置的视觉模型。两种入口共用素材、证据与笔记结构，适合课程、讲座、教程和研究解读视频。
+它提供本地网页、Codex skill 和独立 Python/CLI 入口，调用使用者自己配置的视觉模型。所有入口共用素材、证据与笔记结构，适合课程、讲座、教程和研究解读视频。
 
 目前支持 **Bilibili、YouTube 单个视频与本地视频**。默认生成离线 HTML；也可以输出带配图或纯文本 Markdown，并通过本机已有飞书能力创建文档。平台权限、地区或接口变化可能影响素材访问。
 
@@ -16,6 +16,20 @@
 普通 skill 请求默认用当前 Codex 读图，缺字幕时用本地 faster-whisper 转写。独立 API 模式由你指定端点、模型、密钥引用和预算。默认 HTML 没有 CDN、外部字体或构建系统，图片随文件一起保存。
 
 ## 安装与使用
+
+### 在本机打开网页
+
+下载仓库，准备 Python、FFmpeg/FFprobe 和 uv，在仓库目录运行：
+
+```text
+uv run --python 3.12 --with pillow python scripts/video_notes.py serve --open
+```
+
+也可运行 macOS/Linux 的 `scripts/start-local.sh` 或 Windows 的 `scripts/start-local.cmd`。网页中粘贴视频链接，填写自己的模型地址、模型名和密钥，选择区间后开始分析。可以查看进度、打开历史、阅读 HTML 并下载 HTML/Markdown 配图包。密钥只用于当前任务，不写入浏览器存储或磁盘；完成后的查看和下载不调用模型。
+
+启动、依赖配置、中断恢复和隐私说明见 [本地网页使用指南](references/local-product.md)。真实本地链路在 macOS 验证，Windows 文件锁分支已测试，尚未完成 Windows 真机验收。
+
+### 作为 Codex skill
 
 需要 Python 3.11+、FFmpeg/FFprobe；概览联系表与课件候选扫描使用 Pillow，可以通过 `uv run --with pillow` 隔离提供。
 
@@ -48,7 +62,7 @@ uv run --python 3.12 --with pillow python scripts/video_notes.py analyze \
   --api-key-env VIDEO_NOTES_API_KEY --start 0 --end 180 --format html,md
 ```
 
-示例端点和模型名需要替换，并由你的密钥管理方式设置环境变量。也可 `from video_notes import analyze, ProviderConfig, ApiBudget` 在 Python 中调用。实际 JPEG 与字幕一起提交给模型；预算覆盖概览、可选细读和总结，重复运行使用可核对的缓存。配置、返回值、协议差异与恢复边界见 [独立 API 说明](references/standalone-api.md)。这是 Python/CLI 接口；本轮没有启动 HTTP 服务。
+示例端点和模型名需要替换，并由你的密钥管理方式设置环境变量。也可 `from video_notes import analyze, ProviderConfig, ApiBudget` 在 Python 中调用。实际 JPEG 与字幕一起提交给模型；预算覆盖概览、可选细读和总结，重复运行使用可核对的缓存。配置、返回值、协议差异与恢复边界见 [独立 API 说明](references/standalone-api.md)。本地网页调用同一核心。
 
 ## 工作流
 
@@ -99,7 +113,7 @@ python3 -m compileall -q scripts video_notes
 
 ## 下一阶段
 
-后续可在共用核心上增加 HTTP 服务入口、原生视频模型、长课阅读体验、公式渲染、关键图放大与页面样式。整理许可明确的可分享示例后再制作小红书图文；当前仓库不自动发布社交内容。
+后续可改进长课阅读体验、原生视频模型、公式渲染和关键图放大。整理许可明确的可分享示例后再制作小红书图文；当前仓库不自动发布社交内容。
 
 ## 来源与许可
 

@@ -25,6 +25,8 @@ When the user supplies a model endpoint and requests independent/API execution, 
 
 This mode submits actual caption/frame inputs and generates the same StudyNote, including its synthesis calls before usage is frozen. Inspect returned status, evidence, exports and usage. Submission receipts establish which materials were sent, not semantic accuracy. Do not separately execute the native read/finish steps below on an active API run, delete a pending-call marker, or automatically retry an unknown send. A completed note can be exported without new model calls. Keep unknown token/cost totals distinct from known subtotals and estimates.
 
+When the user wants the independent local web product, read [local-product.md](references/local-product.md) and launch `serve`. Each user supplies their own provider configuration in the local form; no personal provider defaults or saved keys ship with the product. Starting the server, importing a finished note and reading/downloading history do not dispatch models. Actual analysis starts only from an explicit submission; restart never automatically resumes paid calls. Keep the UI result status and sampled-visual limits visible.
+
 The numbered workflow below is the default native Codex mode.
 
 ## 1. Prepare the selected video/part

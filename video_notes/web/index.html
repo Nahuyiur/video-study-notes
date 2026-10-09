@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>视频学习笔记</title>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#workspace">跳到学习工作台</a>
+  <div class="app-shell">
+    <aside class="library" aria-label="笔记历史">
+      <a class="brand" href="/" aria-label="视频学习笔记首页">
+        <svg viewBox="0 0 36 36" fill="none" aria-hidden="true"><path d="M5 7h10a6 6 0 0 1 6 6v17c-2-3-5-4-8-4H5V7Z"/><path d="M21 13a6 6 0 0 1 6-6h5v19h-3c-3 0-6 1-8 4"/><path d="m10 13 6 4-6 4v-8Z"/></svg>
+        <span>视频学习笔记<small>Video Study Notes</small></span>
+      </a>
+      <button id="new-note" class="new-note" type="button"><span aria-hidden="true">＋</span> 新建学习笔记</button>
+      <div class="library-heading"><h2>最近的学习</h2><button id="refresh-history" class="icon-button" type="button" aria-label="刷新笔记历史" title="刷新笔记历史">↻</button></div>
+      <p id="history-empty" class="history-empty">第一份笔记会出现在这里。<br>关闭页面后，也能回来看。</p>
+      <ul id="job-list" class="job-list"></ul>
+      <p class="library-footnote">笔记保存在这台电脑。<br>模型调用使用你自己的 API。</p>
+    </aside>
+
+    <main id="workspace" class="workspace">
+      <header class="workspace-header">
+        <div><h1>留住一堂课的重点</h1><p>结合讲解和画面，整理成带时间线索的学习笔记。</p></div>
+        <span class="local-badge"><span aria-hidden="true"></span> 本机运行</span>
+      </header>
+      <div id="connection-notice" class="notice notice-error" role="alert" hidden></div>
+      <details id="readiness" class="readiness" hidden>
+        <summary><span id="readiness-title">检查运行环境</span><span class="summary-action">查看</span></summary>
+        <ul id="readiness-items"></ul>
+        <button id="refresh-readiness" class="text-button" type="button">重新检查</button>
+      </details>
+      <div class="workbench">
+        <section class="input-panel" aria-labelledby="input-heading">
+          <div class="panel-heading"><h2 id="input-heading">开始一段学习</h2><span>Bilibili / YouTube</span></div>
+          <form id="analysis-form" autocomplete="off">
+            <label for="video-url">视频链接</label>
+            <input id="video-url" name="video_url" type="url" placeholder="粘贴 Bilibili 或 YouTube 视频链接" required maxlength="2048">
+            <div class="range-fields">
+              <div><label for="range-start">从哪里开始 <span>秒</span></label><input id="range-start" name="range_start" type="number" min="0" step="0.1" value="0" inputmode="decimal" required></div>
+              <div><label for="range-end">在哪里结束 <span>可留空</span></label><input id="range-end" name="range_end" type="number" min="0.1" step="0.1" placeholder="视频结束" inputmode="decimal"></div>
+            </div>
+            <p class="field-hint">长课可先选一段。笔记会标明实际处理的范围。</p>
+            <label for="study-focus">你想弄明白什么？ <span>选填</span></label>
+            <textarea id="study-focus" name="study_focus" rows="2" maxlength="2000" placeholder="例如：梳理方法原理、推导过程和实验结论"></textarea>
+            <fieldset class="preset-fields">
+              <legend>学习深度</legend>
+              <div class="preset-options">
+                <label class="preset-option"><input type="radio" name="preset" value="economy" checked><span><strong>快速梳理</strong><small>较少抽帧，最多 2 次调用</small></span></label>
+                <label class="preset-option"><input type="radio" name="preset" value="standard"><span><strong>细读课程</strong><small>更多画面，最多 3 次调用</small></span></label>
+              </div>
+            </fieldset>
+            <div class="config-heading"><h3>你的模型服务</h3><span>需要支持图片输入</span></div>
+            <label for="base-url">API 地址</label>
+            <input id="base-url" name="provider_base_url" type="url" placeholder="https://your-provider.example/v1" required maxlength="2048" spellcheck="false">
+            <label for="model-name">模型名称</label>
+            <input id="model-name" name="provider_model" type="text" placeholder="填写服务提供方的模型名" required maxlength="200" spellcheck="false">
+            <label for="api-key">API 密钥</label>
+            <input id="api-key" name="current_task_key" type="password" placeholder="只用于本次任务" required maxlength="4096" autocomplete="off" spellcheck="false">
+            <p class="privacy-note"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3.5" y="7" width="9" height="7" rx="1.5"/><path d="M5 7V4a3 3 0 0 1 6 0v3"/></svg>提交后清空密钥输入框，不写入浏览器或任务文件。</p>
+            <details class="advanced-settings">
+              <summary>处理选项与调用上限</summary>
+              <div class="advanced-body">
+                <label for="sampling-strategy">画面抽样方式</label>
+                <select id="sampling-strategy" name="sampling_strategy"><option value="slides">优先捕捉课件变化</option><option value="uniform">均匀覆盖视频时间线</option></select>
+                <label class="checkbox-label"><input id="allow-asr" name="allow_asr" type="checkbox" checked><span>没有字幕时，允许在本机转写语音</span></label>
+                <p class="field-hint">首次语音转写可能需要下载转写模型。</p>
+                <div class="range-fields">
+                  <div><label for="max-calls">最多调用次数</label><input id="max-calls" type="number" min="2" max="8" value="2" required></div>
+                  <div><label for="output-tokens">每次输出上限</label><input id="output-tokens" type="number" min="128" max="16384" value="2048" required></div>
+                </div>
+                <div class="range-fields">
+                  <div><label for="total-output-tokens">总预留输出上限</label><input id="total-output-tokens" type="number" min="256" max="65536" value="4096" required></div>
+                  <div><label for="max-images">图片提交总上限</label><input id="max-images" type="number" min="1" max="64" value="6" required></div>
+                </div>
+                <div class="range-fields">
+                  <div><label for="max-input-chars">输入字符总上限</label><input id="max-input-chars" type="number" min="1000" max="200000" value="24000" required></div>
+                  <div><label for="request-timeout">每次等待 <span>秒</span></label><input id="request-timeout" type="number" min="1" max="600" step="1" value="90" required></div>
+                </div>
+                <label for="token-parameter">服务使用的输出参数</label>
+                <select id="token-parameter"><option value="max_completion_tokens">max_completion_tokens</option><option value="max_tokens">max_tokens</option></select>
+                <label class="checkbox-label"><input id="json-mode" type="checkbox" checked><span>服务支持 JSON 输出模式</span></label>
+                <p class="field-hint">上限用于控制调用量；费用取决于你的服务价格。缺少用量或价格时，会显示“未知”。</p>
+              </div>
+            </details>
+            <div id="form-error" class="notice notice-error" role="alert" hidden></div>
+            <button id="start-analysis" class="primary-button" type="submit" disabled>生成学习笔记</button>
+            <p class="submit-hint">字幕与抽样画面将发送给你填写的模型服务。</p>
+          </form>
+        </section>
+
+        <section id="reading-panel" class="reading-panel" aria-labelledby="reading-heading">
+          <div id="reading-empty" class="reading-empty">
+            <div class="notebook-illustration" aria-hidden="true"><div class="paper-spine"></div><div class="paper-line long"></div><div class="paper-line"></div><div class="paper-frame"><span>▶</span></div><div class="paper-line long"></div><div class="paper-line short"></div><div class="paper-timestamp">00:00</div></div>
+            <h2 id="reading-heading">从视频，到可回看的笔记</h2>
+            <p>重点、画面和时间线索放在一起。<br>你可以在这里阅读，也可以下载带走。</p>
+            <div class="reading-example"><span class="timeline-dot" aria-hidden="true"></span><span>选择范围</span><span class="timeline-line" aria-hidden="true"></span><span>阅读讲解与画面</span><span class="timeline-line" aria-hidden="true"></span><span>整理笔记</span></div>
+          </div>
+          <div id="job-detail" hidden>
+            <header class="note-header"><div><span id="job-status" class="status-label"></span><h2 id="job-title"></h2><a id="job-source" target="_blank" rel="noopener noreferrer" hidden>回到原视频</a></div><span id="job-created" class="job-created"></span></header>
+            <div id="job-progress" class="job-progress"><span id="progress-marker" class="progress-marker" aria-hidden="true"></span><div><strong id="job-stage"></strong><p id="job-message"></p></div></div>
+            <div class="note-meta"><div><span>处理范围</span><strong id="job-scope"></strong></div><div><span>模型调用</span><strong id="usage-calls"></strong></div><div><span>实际 Tokens</span><strong id="usage-tokens"></strong></div><div><span>API 费用</span><strong id="usage-cost"></strong></div></div>
+            <p id="coverage-notice" class="coverage-notice" hidden></p>
+            <p id="usage-notice" class="coverage-notice" hidden></p>
+            <p id="usage-subtotal" class="coverage-notice" hidden></p>
+            <form id="resume-form" class="resume-form" autocomplete="off" hidden><label for="resume-key">继续这个任务</label><p>重新填写密钥，将复用已有材料和可确认的响应。</p><div class="resume-controls"><input id="resume-key" name="resume_task_key" type="password" required maxlength="4096" autocomplete="off" placeholder="本次继续使用的 API 密钥"><button id="resume-analysis" class="secondary-button" type="submit">继续处理</button></div><div id="resume-error" class="notice notice-error" role="alert" hidden></div></form>
+            <div id="artifact-controls" class="artifact-controls" hidden><strong>学习笔记</strong><div><button type="button" data-artifact="html">下载 HTML</button><button type="button" data-artifact="markdown_zip">MD + 图片</button><button type="button" data-artifact="markdown">下载 MD</button><button type="button" data-artifact="markdown_text">纯文字</button></div></div>
+            <p id="preview-message" class="preview-message" role="status" hidden></p>
+            <iframe id="note-preview" title="学习笔记预览" sandbox="" referrerpolicy="no-referrer" hidden></iframe>
+          </div>
+        </section>
+      </div>
+      <footer class="workspace-footer">抽样理解可能遗漏细节；重要结论可以通过时间线索回看原视频。</footer>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
