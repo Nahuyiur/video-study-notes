@@ -8,7 +8,6 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from contextlib import contextmanager
-import fcntl
 import hashlib
 import html
 import json
@@ -20,6 +19,7 @@ import subprocess
 import tempfile
 from typing import Protocol
 
+from ..locking import file_lock, sync_directory
 from ..sources import timestamp_url
 
 
@@ -54,11 +54,7 @@ def _save(path, value):
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(name, path)
-        parent = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(parent)
-        finally:
-            os.close(parent)
+        sync_directory(path.parent)
     finally:
         if os.path.exists(name):
             os.unlink(name)
@@ -67,8 +63,7 @@ def _save(path, value):
 @contextmanager
 def _lock(directory):
     directory.mkdir(parents=True, exist_ok=True)
-    with (directory / ".feishu.lock").open("a") as stream:
-        fcntl.flock(stream, fcntl.LOCK_EX)
+    with file_lock(directory / ".feishu.lock"):
         yield
 
 

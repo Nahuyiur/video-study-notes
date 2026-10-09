@@ -6,9 +6,11 @@ import math
 import re
 import time
 import uuid
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+
+from .locking import file_lock
 
 PRESETS = {
     "economy": {"text_chars": 12000, "overview_frames": 12, "detail_frames": 6, "read_batches": 4},
@@ -127,18 +129,14 @@ def ensure_open(run):
 
 @contextmanager
 def run_lock(directory):
-    import fcntl
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
-    with (directory / ".run.lock").open("a") as lock:
+    with ExitStack() as stack:
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            stack.enter_context(file_lock(directory / ".run.lock", blocking=False))
         except BlockingIOError:
             raise RuntimeError("Another command owns this run; retry after it finishes") from None
-        try:
-            yield
-        finally:
-            fcntl.flock(lock, fcntl.LOCK_UN)
+        yield
 
 
 @contextmanager

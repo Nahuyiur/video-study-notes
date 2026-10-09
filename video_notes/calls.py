@@ -10,6 +10,7 @@ from contextlib import nullcontext
 from pathlib import Path
 
 from . import api
+from .locking import sync_directory
 from .run import load, now, open_run, run_lock
 from .usage import record_api_receipt
 
@@ -20,7 +21,7 @@ def digest(value):
 
 
 def durable_save(path, value):
-    """Replace and fsync both file and directory before a network dispatch."""
+    """Fsync the file and, where supported, its directory before a dispatch."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(path.suffix + ".tmp")
@@ -29,11 +30,7 @@ def durable_save(path, value):
     with os.fdopen(descriptor, "wb") as handle:
         handle.write(data); handle.flush(); os.fsync(handle.fileno())
     temp.replace(path)
-    descriptor = os.open(path.parent, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
+    sync_directory(path.parent)
 
 
 def request_manifest(request, config):

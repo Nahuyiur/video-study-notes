@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import argparse
 import copy
-import fcntl
 import hashlib
 import json
 import math
@@ -16,6 +15,7 @@ import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from .locking import file_lock
 from .run import load, save
 
 SCHEMA_VERSION = 2
@@ -354,8 +354,7 @@ def save_note(run_dir, data, *, legacy=False):
     if folder.is_symlink():
         raise ValueError("Notes directory cannot be a symlink")
     folder.mkdir(parents=True, exist_ok=True)
-    with (folder / ".save.lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    with file_lock(folder / ".save.lock"):
         snapshot = create_snapshot(directory)
         content = import_legacy_summary(data, snapshot) if legacy else normalize_note(data, snapshot)
         content_hash = digest({**content, "snapshot": snapshot})

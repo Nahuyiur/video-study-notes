@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import fcntl
 import json
 import math
 import os
@@ -11,6 +10,7 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+from .locking import file_lock
 from .run import ensure_open, load, now, open_run, save, text_estimate
 
 
@@ -167,8 +167,7 @@ def api_totals(calls):
 
 def ledger_append(path, report):
     path = Path(path).expanduser(); path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a+", encoding="utf-8") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
+    with file_lock(path.with_name(path.name + ".lock")), path.open("a+", encoding="utf-8") as handle:
         handle.seek(0)
         for line in handle:
             try:
