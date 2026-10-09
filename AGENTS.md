@@ -1,6 +1,6 @@
 # Maintaining Video Study Notes
 
-This repository is the source for the `video-study-notes` Codex skill and its standalone Python/CLI engine. Acquisition supports Bilibili, individual YouTube videos and local files. Shared understanding produces frozen StudyNote revisions for HTML, Markdown and optional Feishu delivery. See `references/architecture.md` for module ownership.
+This repository is the source for the `video-study-notes` Codex skill and its standalone Python/CLI engine. Acquisition supports Bilibili, individual YouTube/RedNote videos and local files. Shared understanding produces frozen StudyNote revisions for HTML, Markdown and optional Feishu delivery. See `references/architecture.md` for module ownership.
 
 - Keep script paths relative to the skill root. Preserve `SKILL.md`, `agents/openai.yaml`, workflow references and the actual CLI behavior together.
 - Preserve budget and completion boundaries. Acquiring frames is not model reading; transcript coverage is not exhaustive visual coverage. Unknown counters/costs stay null.
@@ -20,3 +20,5 @@ git diff --check
 ```
 
 If available on the current Codex host, also run its skill-creator validator and skill-router audit. Verify source-specific access separately when changing acquisition. Explain what was actually run; do not present fixture/CI success as live-video success.
+
+- RedNote access URLs and signed media remain in process-scoped memory. Keep source/run/note URLs canonical without query strings. External skill use is operator-selected and read-only; stop on login/captcha, never migrate profiles or ship account state. A description/cover is never a transcript or video-frame read.

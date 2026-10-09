@@ -1,11 +1,11 @@
 ---
 name: video-study-notes
-description: Understand courses, lectures and tutorials from Bilibili, individual YouTube videos or local files using timestamped subtitles/local ASR and actual sampled video frames. Create evidence-linked Chinese video notes with original-time links, explained images and honest bounded usage. Use native Codex reading by default, or the standalone Python/CLI engine when the user configures a model API. Export offline HTML or Markdown, or deliver the saved note to Feishu when requested. Use for B站/BV/b23.tv and YouTube summaries, lessons, slide/formula/code explanations and visual study notes.
+description: Understand courses, lectures and tutorials from Bilibili, individual YouTube/RedNote videos or local files using timestamped subtitles/local ASR and actual sampled video frames. Create evidence-linked Chinese video notes with original-time links, explained images and honest bounded usage. Use native Codex reading by default, or the standalone Python/CLI engine when the user configures a model API. Export offline HTML or Markdown, or deliver the saved note to Feishu when requested. Use for B站/BV/b23.tv, YouTube and 小红书/RedNote video summaries, lessons, slide/formula/code explanations and visual study notes.
 ---
 
 # 视频学习笔记
 
-Use **字幕/音频 + 实际画面 + 同一时间轴**. Acquisition supports Bilibili, individual YouTube videos and local files. Default to HTML; honor requested Markdown or Feishu delivery using the same saved StudyNote. A video title, description, OCR dump or transcript alone is not visual understanding. Default to the current Codex image reader, without a separate paid vision API. This is sampled-frame understanding, not continuous video playback.
+Use **字幕/音频 + 实际画面 + 同一时间轴**. Acquisition supports Bilibili, individual YouTube/RedNote videos and local files. Default to HTML; honor requested Markdown or Feishu delivery using the same saved StudyNote. A video title, description, OCR dump or transcript alone is not visual understanding. Default to the current Codex image reader, without a separate paid vision API. This is sampled-frame understanding, not continuous video playback.
 
 Resolve bundled scripts relative to this skill folder (`S`). Give each invocation its own output directory (`R`). Do not load the full upstream skills: the relevant BiliLens extraction/ASR helpers are pinned and bundled. The Bilibili DASH/FFmpeg extraction design follows `bilibili-to-obsidian`; its publishing, Obsidian, email and external-GPT pipeline are not dependencies.
 
@@ -34,6 +34,8 @@ The numbered workflow below is the default native Codex mode.
 ```bash
 python3 "$S/scripts/video_notes.py" prepare --video '<URL/BV/local-file>' --out "$R"
 ```
+
+For RedNote/小红书, read [rednote.md](references/rednote.md) on first use. Accept one video note or current share link. Anonymous extraction is the default; the optional explicitly configured external `xiaohongshu-skill` supplies only a visible single-note read using its existing main session. Access links/tokens enter through stdin or Python memory, never command arguments, source/run/note/ledger files. Stop on login/captcha/security verification; do not retry or auto-login. There are no timestamped native captions in this adapter: use local ASR, never the title, description or cover as video evidence.
 
 For Bilibili, honor `?p=`; pass `--page N` only when needed. YouTube accepts one watch/short/Shorts/embed/archived-live URL, without expanding playlists or ongoing livestreams. `--language en` (or another code) chooses subtitle language; manual tracks precede automatic tracks. Read [youtube.md](references/youtube.md) on first YouTube use for optional yt-dlp/EJS and existing JS runtime requirements; do not install a runtime or discover browser credentials automatically. `--start SECONDS --end SECONDS` selects a requested interval. `--transcript FILE.json` accepts timestamped Bilibili, Whisper or BiliLens JSON for local media. `--source-json FILE.json` reuses a normalized SourceRecord or explicitly provided legacy BiliLens source. Do not dump the full `source.json` into model context; use bounded reading packs.
 

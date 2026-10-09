@@ -75,11 +75,18 @@ def source_url(value):
         parts = urlsplit(value)
         host, port = parts.hostname, parts.port
     except ValueError:
-        raise ProductError("invalid_url", "请填写 Bilibili 或 YouTube 视频链接。") from None
-    hosts = {"bilibili.com", "www.bilibili.com", "b23.tv", "youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"}
+        raise ProductError("invalid_url", "请填写 Bilibili、YouTube 或小红书视频链接。") from None
+    hosts = {"bilibili.com", "www.bilibili.com", "b23.tv", "youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be",
+             "www.xiaohongshu.com", "xiaohongshu.com", "xhslink.cn", "xhslink.com"}
     if (parts.scheme != "https" or host not in hosts or port not in (None, 443)
             or parts.username or parts.password or "\\" in value or any(ord(c) < 33 for c in value)):
-        raise ProductError("invalid_url", "请填写 HTTPS 的 Bilibili 或 YouTube 视频链接。")
+        raise ProductError("invalid_url", "请填写 HTTPS 的 Bilibili、YouTube 或小红书视频链接。")
+    if host in {"www.xiaohongshu.com", "xiaohongshu.com", "xhslink.cn", "xhslink.com"}:
+        from .sources.rednote import persistence_video
+        try:
+            return persistence_video(value)
+        except ValueError:
+            raise ProductError("invalid_url", "请填写单篇小红书视频笔记或分享链接。") from None
     allowed = {"v", "p", "t", "start"}
     query = urlencode([(k, v) for k, v in parse_qsl(parts.query) if k in allowed])
     return urlunsplit(("https", host, parts.path or "/", query, ""))
@@ -133,7 +140,7 @@ def submission(payload):
             "start": start, "end": end, "preset": preset, "strategy": strategy, "allow_asr": allow_asr,
             "focus": _text(payload.get("focus", ""), "学习重点"),
             "language": _text(payload.get("language", "zh"), "输出语言", limit=80, required=True)}
-    if key in json.dumps(spec, ensure_ascii=False):
+    if key in json.dumps(spec, ensure_ascii=False) or key in payload.get("url", ""):
         raise ProductError("credential_in_input", "请只在密钥栏填写密钥。")
     return sid, spec, key
 
@@ -242,6 +249,8 @@ def safe_failure(status, reason=""):
     if status == "outcome_unknown":
         return "服务响应结果未知，可能已产生费用。已保留记录并停止，不能自动重试；请先核对服务方记录。"
     reason = str(reason).lower()
+    if "rednote" in reason and any(marker in reason for marker in ("login_required", "verification_required")):
+        return "小红书要求登录或验证，素材读取已停止。可使用你自己本机的已登录会话，或可访问的分享链接、本地视频；本任务不会自动重试。"
     if "deno" in reason or "node" in reason or "javascript" in reason or "yt-dlp-ejs" in reason:
         return "YouTube 提取缺少受支持的 JavaScript 环境。请安装 Node 22 以上或 Deno 2.3 以上并加入系统 PATH，再明确继续；本次没有自动安装或重试。"
     if "401" in reason or "403" in reason or "credential" in reason:
@@ -258,7 +267,7 @@ def safe_failure(status, reason=""):
 
 
 class Product:
-    def __init__(self, data_dir, *, executor=None):
+    def __init__(self, data_dir, *, executor=None, rednote_skill=None):
         self.root = Path(data_dir).expanduser().resolve()
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.jobs = self.root / "jobs"
@@ -274,6 +283,8 @@ class Product:
         self.mutex = threading.Lock()
         self.children = {}
         self.executor = executor or self._spawn
+        # Trusted local operator setting, never accepted as a browser path.
+        self.rednote_skill = str(Path(rednote_skill).expanduser().resolve()) if rednote_skill else None
 
     def close(self):
         # A running child owns execution independently and can finish after UI closes.
@@ -301,12 +312,13 @@ class Product:
         except BlockingIOError:
             return True
 
-    def _spawn(self, jid, attempt, key):
+    def _spawn(self, jid, attempt, key, access_url=None):
         command = [sys.executable, "-m", "video_notes.worker", "--data-dir", str(self.root), "--job", jid, "--attempt", attempt]
         child = subprocess.Popen(command, cwd=Path(__file__).resolve().parent.parent,
                                  stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.children[attempt] = child
-        encoded = json.dumps({"api_key": key}, ensure_ascii=False).encode()
+        encoded = json.dumps({"api_key": key, "rednote_access_url": access_url,
+                              "rednote_skill": self.rednote_skill}, ensure_ascii=False).encode()
         # Waiting happens in a separate thread; requests and progress stay responsive.
         def feed():
             nonlocal encoded
@@ -318,6 +330,8 @@ class Product:
 
     def submit(self, payload):
         sid, spec, key = submission(payload)
+        from .sources.rednote import is_rednote
+        access_url = _text(payload["url"], "视频链接", limit=2000, required=True) if is_rednote(spec["url"]) else None
         try:
             with self.mutex:
                 for path in self.jobs.iterdir():
@@ -335,17 +349,19 @@ class Product:
                        "created_at": now(), "attempt": attempt, "imported": False}
                 calls.durable_save(folder / "job.json", row)
                 try:
-                    self.executor(jid, attempt, key)
+                    self.executor(jid, attempt, key, access_url)
                 except Exception:
                     calls.durable_save(folder / (attempt + ".json"), {"status": "failed", "message": "执行进程未能启动，请检查本机 Python 环境。"})
                 return self.view(jid), True
         finally:
             key = None
+            access_url = None
 
     def resume(self, jid, payload):
-        if not isinstance(payload, dict) or set(payload) != {"api_key"}:
+        if not isinstance(payload, dict) or set(payload) - {"api_key", "url"} or "api_key" not in payload:
             raise ProductError("invalid_input", "继续任务需要本次使用的密钥。")
         key = credential(payload["api_key"])
+        access_url = None
         try:
             with self.mutex:
                 row, view = self.record(jid), self.view(jid)
@@ -355,16 +371,28 @@ class Product:
                     raise ProductError("busy", "已有任务正在运行，请等待完成。", 409)
                 if key in json.dumps(row, ensure_ascii=False):
                     raise ProductError("credential_in_input", "请只在密钥栏填写密钥。")
+                from .sources.rednote import is_rednote
+                if payload.get("url"):
+                    raw_url = _text(payload["url"], "视频链接", limit=2000, required=True)
+                    clean_url = source_url(raw_url)
+                    source = _read(self.folder(jid) / "run/source.json") or {}
+                    expected = source.get("source", {}).get("canonical_url") or row["spec"]["url"]
+                    if not is_rednote(row["spec"]["url"]) or clean_url not in {expected, row["spec"]["url"]}:
+                        raise ProductError("source_mismatch", "继续时需填写同一篇小红书笔记的链接。")
+                    if key in raw_url:
+                        raise ProductError("credential_in_input", "请只在密钥栏填写密钥。")
+                    access_url = raw_url
                 attempt = str(uuid.uuid4())
                 row["attempt"] = attempt
                 calls.durable_save(self.folder(jid) / "job.json", row)
                 try:
-                    self.executor(jid, attempt, key)
+                    self.executor(jid, attempt, key, access_url)
                 except Exception:
                     calls.durable_save(self.folder(jid) / (attempt + ".json"), {"status": "failed", "message": "执行进程未能启动，请检查本机 Python 环境。"})
                 return self.view(jid)
         finally:
             key = None
+            access_url = None
 
     def view(self, jid):
         folder, row = self.folder(jid), self.record(jid)
@@ -629,12 +657,13 @@ def main(argv=None):
     parser.add_argument("--data-dir", default=str(Path.home() / ".video-study-notes"))
     parser.add_argument("--open", action="store_true")
     parser.add_argument("--import-run", action="append", default=[])
+    parser.add_argument("--rednote-skill", help="Optional external read-only RedNote skill directory; uses its existing visible main session")
     args = parser.parse_args(argv)
     if not 0 <= args.port <= 65535:
         parser.error("port must be between 0 and 65535")
     product = None
     try:
-        product = Product(args.data_dir)
+        product = Product(args.data_dir, rednote_skill=args.rednote_skill)
         for path in args.import_run:
             product.import_run(path)
         with LocalServer(product, args.host, args.port) as server:

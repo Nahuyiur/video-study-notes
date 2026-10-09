@@ -82,6 +82,46 @@ class ProductTests(unittest.TestCase):
                 self.product.submit(body)
         self.assertEqual(self.launched, [])
         self.assertEqual(self.product.history(), [])
+        message = product.safe_failure("failed", "RedNote login_required synthetic-access-token")
+        self.assertIn("已停止", message)
+        self.assertNotIn("synthetic-access-token", message)
+
+    def test_rednote_access_link_is_ephemeral_and_resume_matches_note(self):
+        note = "0123456789abcdef01234567"
+        public = "https://www.xiaohongshu.com/explore/" + note
+        body = payload()
+        body["url"] = public + "?xsec_token=synthetic-access-token&share_id=tracking"
+        view, _ = self.product.submit(body)
+        self.assertEqual(self.launched[0][3], body["url"])
+        self.assertEqual(self.product.record(view["id"])["spec"]["url"], public)
+        self.assertEqual(view["source_url"], public)
+        self.assertNoCredentialOnDisk("synthetic-access-token")
+        fresh = public + "?xsec_token=fresh-synthetic-token"
+        self.product.resume(view["id"], {"api_key": "new-synthetic-key", "url": fresh})
+        self.assertEqual(self.launched[-1][3], fresh)
+        self.assertNoCredentialOnDisk("fresh-synthetic-token")
+        self.assertNoCredentialOnDisk("new-synthetic-key")
+        before = len(self.launched)
+        with self.assertRaisesRegex(product.ProductError, "同一篇"):
+            self.product.resume(view["id"], {"api_key": "new-synthetic-key", "url": public.replace(note, "f" * 24)})
+        self.assertEqual(len(self.launched), before)
+        body["submission_id"] = str(uuid.uuid4())
+        body["url"] = public + "?xsec_token=" + body["api_key"]
+        with self.assertRaisesRegex(product.ProductError, "密钥栏"):
+            self.product.submit(body)
+
+    def test_rednote_short_links_and_browser_paths(self):
+        self.assertEqual(product.source_url("https://xhslink.cn/o/synthetic?share=tracking"), "https://xhslink.cn/o/synthetic")
+        self.assertEqual(product.source_url("https://www.xiaohongshu.com/discovery/item/0123456789abcdef01234567?xsec_token=synthetic"),
+                         "https://www.xiaohongshu.com/explore/0123456789abcdef01234567")
+        for url in ("https://www.xiaohongshu.com/user/profile/private", "https://xhslink.cn@outside.example/o/link",
+                    "https://www.xiaohongshu.com/explore/too-short", "https://xhslink.cn:444/o/link"):
+            with self.subTest(url=url), self.assertRaises(product.ProductError):
+                product.source_url(url)
+        body = payload()
+        body["rednote_skill"] = "/operator-only/skill"
+        with self.assertRaises(product.ProductError):
+            self.product.submit(body)
 
     def test_independent_locks_and_restart_never_dispatch(self):
         with self.assertRaises(product.ProductError):

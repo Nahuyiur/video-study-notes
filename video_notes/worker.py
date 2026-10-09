@@ -13,7 +13,7 @@ from .product import credential, identifier, make_artifacts, safe_failure
 from .run import load, now
 
 
-def execute(root, jid, attempt, key, *, analyze=engine.analyze):
+def execute(root, jid, attempt, key, *, analyze=engine.analyze, rednote_access_url=None, rednote_skill=None):
     root, jid, attempt = Path(root).resolve(), identifier(jid), identifier(attempt)
     folder = root / "jobs" / jid
     if folder.is_symlink() or not folder.resolve().is_relative_to(root / "jobs"):
@@ -37,7 +37,8 @@ def execute(root, jid, attempt, key, *, analyze=engine.analyze):
             result = analyze(spec["url"], run_dir=folder / "run", provider=provider, budget=budget,
                              start=spec["start"], end=spec["end"], preset=spec["preset"], focus=spec["focus"],
                              language=spec["language"], allow_asr=spec["allow_asr"], strategy=spec["strategy"],
-                             outputs=("html", "md"), ledger=root / "usage.jsonl")
+                             outputs=("html", "md"), ledger=root / "usage.jsonl",
+                             rednote_access_url=rednote_access_url, rednote_skill=rednote_skill)
             status = result.get("status")
             if status in ("complete", "partial", "visual_only"):
                 make_artifacts(folder / "run")
@@ -60,6 +61,7 @@ def execute(root, jid, attempt, key, *, analyze=engine.analyze):
         calls.durable_save(receipt, {"status": "failed", "message": "执行未完成，已有材料与记录保留。请检查提取环境或明确继续。"})
     finally:
         key = None
+        rednote_access_url = None
     return 1
 
 
@@ -79,12 +81,17 @@ def main(argv=None):
         value = json.loads(payload)
         payload = b""
         key = value.pop("api_key")
+        access_url = value.pop("rednote_access_url", None)
+        skill = value.pop("rednote_skill", None)
+        if value or (access_url is not None and not isinstance(access_url, str)) or (skill is not None and not isinstance(skill, str)):
+            return 1
         value.clear()
-        return execute(args.data_dir, args.job, args.attempt, key)
+        return execute(args.data_dir, args.job, args.attempt, key, rednote_access_url=access_url, rednote_skill=skill)
     except (ValueError, KeyError, TypeError, OSError):
         return 1
     finally:
         key = None
+        access_url = None
 
 
 if __name__ == "__main__":

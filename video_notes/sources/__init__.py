@@ -1,5 +1,6 @@
 """Fixed source adapters and shared source links."""
 from pathlib import Path
+from contextlib import nullcontext
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from ..contracts import source_record, safe_url
@@ -19,18 +20,34 @@ def normalize_source(raw):
                          content, raw.get("source", {}).get("authenticated", False))
 
 
-def resolve_source(video, page=None, use_cookie=False, language=None):
+def resolve_source(video, page=None, use_cookie=False, language=None, rednote_skill=None):
     if Path(video).is_file():
         from .local import resolve
         return resolve(video)
     host = (urlsplit(video).hostname or "").lower()
+    if host in ("www.xiaohongshu.com", "xiaohongshu.com", "xhslink.cn", "xhslink.com"):
+        from .rednote import resolve
+        return resolve(video, skill_path=rednote_skill)
     if host in ("youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"):
         from .youtube import resolve
         return resolve(video, language=language)
     if video.startswith("BV") or host in ("bilibili.com", "www.bilibili.com", "b23.tv"):
         from .bilibili import resolve
         return resolve(video, page, use_cookie)
-    raise ValueError("Unsupported source; use a Bilibili/YouTube URL or local file")
+    raise ValueError("Unsupported source; use a Bilibili/YouTube/RedNote URL or local file")
+
+
+def source_access(video=None, *, rednote_access_url=None, rednote_skill=None):
+    """Access links are execution context, never persisted source fields."""
+    from .rednote import access, is_rednote
+    if rednote_access_url is not None or rednote_skill is not None or (video and is_rednote(video)):
+        return access(rednote_access_url or (video if video and is_rednote(video) else None), rednote_skill)
+    return nullcontext()
+
+
+def persistence_video(video):
+    from .rednote import persistence_video as sanitized
+    return sanitized(video)
 
 
 def media_input(directory, run, kind, use_cookie=False, override=None, height=720):
@@ -46,6 +63,9 @@ def media_input(directory, run, kind, use_cookie=False, override=None, height=72
         return media(source, kind, use_cookie, height)
     if platform == "youtube":
         from .youtube import media
+        return media(source, kind, height=height)
+    if platform == "rednote":
+        from .rednote import media
         return media(source, kind, height=height)
     raise ValueError("Local media path unavailable; supply --media")
 

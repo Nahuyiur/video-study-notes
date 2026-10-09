@@ -11,3 +11,5 @@
 - YouTube：按需使用固定版本 yt-dlp/EJS 与已有受支持的 JavaScript runtime；支持人工/自动字幕和共享本地 ASR，不展开课程播放列表或持续直播。完整依赖、匿名访问、代理与真实验收范围见 [youtube.md](youtube.md)。
 - 本地视频：FFprobe 获取时长，接受时间戳字幕，缺失时共用 ASR；本地路径留在 run，不进入笔记证据快照或公开视频输出。
 - 统一来源、证据与交付责任见 [architecture.md](architecture.md)。HTML/MD 没有媒体/模型调用；飞书交付需要现有 user 身份和真实在线回读，详见 [feishu.md](feishu.md)。
+
+- RedNote/小红书：单视频的页面状态与媒体字段结构参考 [yt-dlp 官方提取器](https://raw.githubusercontent.com/yt-dlp/yt-dlp/master/yt_dlp/extractor/xiaohongshu.py)，实现为独立的归一化适配器，没有复制上游完整脚本。可选连接使用者已安装的 [xiaohongshu-skill](https://github.com/DeliciousBuding/xiaohongshu-skill) 只读能力；不随仓库附带会话或个人路径。参见 [访问、隐私及验收边界](rednote.md)。

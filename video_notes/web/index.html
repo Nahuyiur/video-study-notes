@@ -36,10 +36,11 @@
       </details>
       <div class="workbench">
         <section class="input-panel" aria-labelledby="input-heading">
-          <div class="panel-heading"><h2 id="input-heading">开始一段学习</h2><span>Bilibili / YouTube</span></div>
+          <div class="panel-heading"><h2 id="input-heading">开始一段学习</h2><span>Bilibili / YouTube / 小红书</span></div>
           <form id="analysis-form" autocomplete="off">
             <label for="video-url">视频链接</label>
-            <input id="video-url" name="video_url" type="url" placeholder="粘贴 Bilibili 或 YouTube 视频链接" required maxlength="2048">
+            <input id="video-url" name="video_url" type="url" placeholder="粘贴视频链接或小红书分享文字" required maxlength="2048">
+            <p class="field-hint">小红书如需登录，可连接本机已有的小红书 skill；访问令牌只用于当前任务。</p>
             <div class="range-fields">
               <div><label for="range-start">从哪里开始 <span>秒</span></label><input id="range-start" name="range_start" type="number" min="0" step="0.1" value="0" inputmode="decimal" required></div>
               <div><label for="range-end">在哪里结束 <span>可留空</span></label><input id="range-end" name="range_end" type="number" min="0.1" step="0.1" placeholder="视频结束" inputmode="decimal"></div>
@@ -107,7 +108,7 @@
             <p id="coverage-notice" class="coverage-notice" hidden></p>
             <p id="usage-notice" class="coverage-notice" hidden></p>
             <p id="usage-subtotal" class="coverage-notice" hidden></p>
-            <form id="resume-form" class="resume-form" autocomplete="off" hidden><label for="resume-key">继续这个任务</label><p>重新填写密钥，将复用已有材料和可确认的响应。</p><div class="resume-controls"><input id="resume-key" name="resume_task_key" type="password" required maxlength="4096" autocomplete="off" placeholder="本次继续使用的 API 密钥"><button id="resume-analysis" class="secondary-button" type="submit">继续处理</button></div><div id="resume-error" class="notice notice-error" role="alert" hidden></div></form>
+            <form id="resume-form" class="resume-form" autocomplete="off" hidden><label for="resume-key">继续这个任务</label><p>重新填写密钥，将复用已有材料和可确认的响应。</p><div id="resume-source" hidden><label for="resume-url">当前小红书链接 <span>访问需要时填写</span></label><input id="resume-url" type="url" maxlength="2000" autocomplete="off" placeholder="同一篇笔记的最新链接，不保存令牌"></div><div class="resume-controls"><input id="resume-key" name="resume_task_key" type="password" required maxlength="4096" autocomplete="off" placeholder="本次继续使用的 API 密钥"><button id="resume-analysis" class="secondary-button" type="submit">继续处理</button></div><div id="resume-error" class="notice notice-error" role="alert" hidden></div></form>
             <div id="artifact-controls" class="artifact-controls" hidden><strong>学习笔记</strong><div><button type="button" data-artifact="html">下载 HTML</button><button type="button" data-artifact="markdown_zip">MD + 图片</button><button type="button" data-artifact="markdown">下载 MD</button><button type="button" data-artifact="markdown_text">纯文字</button></div></div>
             <p id="preview-message" class="preview-message" role="status" hidden></p>
             <iframe id="note-preview" title="学习笔记预览" sandbox="" referrerpolicy="no-referrer" hidden></iframe>

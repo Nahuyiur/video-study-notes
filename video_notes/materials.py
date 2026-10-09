@@ -15,7 +15,7 @@ from .run import (PRESETS, bounded_segments, ensure_open, load, nearby, now,
                   stamp, transcript_coverage)
 
 UPSTREAM = Path(__file__).resolve().parents[1] / "scripts/upstream"
-from .sources import resolve_source, media_input as source_media, normalize_source
+from .sources import resolve_source, media_input as source_media, normalize_source, source_access, persistence_video
 
 def execute(command, timeout=90):
     try:
@@ -40,7 +40,7 @@ def prepare(args):
         source = normalize_source(load(args.source_json))
     else:
         source = resolve_source(args.video, args.page, args.use_env_cookie,
-                                getattr(args, "language", None))
+                                getattr(args, "language", None), getattr(args, "rednote_skill", None))
     if args.transcript:
         source["content"] = {"source_type": "provided_transcript", "segments": segments_from(load(args.transcript))}
     rows = segments_from(source)
@@ -56,7 +56,8 @@ def prepare(args):
     directory.mkdir(parents=True, exist_ok=True)
     save(directory / "source.json", source)
     run = {"schema_version": 2, "run_id": str(uuid.uuid4()), "started_at": now(), "status": "prepared",
-           "video": str(Path(args.video).resolve()) if Path(args.video).is_file() else args.video,
+           "video": (source["source"]["canonical_url"] if source["source"]["platform"] == "rednote" else
+                     str(Path(args.video).resolve()) if Path(args.video).is_file() else args.video),
            "local_media": str(Path(args.video).resolve()) if Path(args.video).is_file() else None,
            "preset": args.preset, "budget": budget,
            "video_duration_seconds": duration,
@@ -215,19 +216,33 @@ def main(argv=None):
     p.add_argument("--preset", choices=PRESETS, default="economy"); p.add_argument("--start", type=float, default=0)
     p.add_argument("--language"); p.add_argument("--end", type=float); p.add_argument("--session-log"); p.add_argument("--ledger")
     p.add_argument("--use-env-cookie", action="store_true")
+    p.add_argument("--rednote-skill", help="Explicit external read-only RedNote skill directory")
+    p.add_argument("--rednote-access-stdin", action="store_true", help="Read a fresh RedNote access URL from stdin JSON")
     p.set_defaults(func=prepare)
     p = sub.add_parser("frames"); p.add_argument("--run", required=True); p.add_argument("--kind", choices=("overview", "detail"), default="overview")
     p.add_argument("--strategy", choices=("uniform", "slides"), default="uniform"); p.add_argument("--times"); p.add_argument("--media"); p.add_argument("--use-env-cookie", action="store_true"); p.set_defaults(func=frames)
+    p.add_argument("--rednote-skill"); p.add_argument("--rednote-access-stdin", action="store_true")
     p = sub.add_parser("transcribe"); p.add_argument("--run", required=True); p.add_argument("--media")
     p.add_argument("--model", choices=("base", "small"), default="small"); p.add_argument("--language", default="auto")
     p.add_argument("--use-env-cookie", action="store_true"); p.set_defaults(func=transcribe)
+    p.add_argument("--rednote-skill"); p.add_argument("--rednote-access-stdin", action="store_true")
     p = sub.add_parser("continue"); p.add_argument("--run", required=True); p.add_argument("--out", required=True)
     p.add_argument("--preset", choices=PRESETS); p.add_argument("--session-log"); p.add_argument("--ledger")
     p.set_defaults(func=continue_run)
     args = parser.parse_args(argv)
     started = now()
     try:
-        args.func(args)
+        access_url = None
+        if getattr(args, "rednote_access_stdin", False):
+            from .sources.rednote import stdin_access
+            access_url = stdin_access()
+        video = getattr(args, "video", None)
+        from .sources.rednote import is_rednote
+        from urllib.parse import urlsplit
+        if video and is_rednote(video) and urlsplit(video).query:
+            raise ValueError("RedNote access queries must be supplied through --rednote-access-stdin")
+        with source_access(video, rednote_access_url=access_url, rednote_skill=getattr(args, "rednote_skill", None)):
+            args.func(args)
     except (ValueError, RuntimeError, OSError, KeyError) as exc:
         message = str(exc)
         if args.command == "prepare":
@@ -242,12 +257,16 @@ def record_failed_prepare(args, started, message):
     directory = Path(args.out).resolve()
     if (directory / "run.json").exists():
         return  # Never overwrite an existing run on an accidental repeat.
+    try:
+        persisted_video = persistence_video(args.video)
+    except ValueError:
+        persisted_video = None
     directory.mkdir(parents=True, exist_ok=True)
     if not (directory / "source.json").exists():
         save(directory / "source.json", {"source": {"canonical_url": None}, "metadata": {"title": None}, "selection": {"page": args.page}})
     save(directory / "segments.json", [])
     save(directory / "run.json", {"schema_version": 2, "run_id": str(uuid.uuid4()), "started_at": started,
-         "status": "prepare_failed", "video": args.video, "preset": args.preset, "budget": PRESETS[args.preset],
+         "status": "prepare_failed", "video": persisted_video, "preset": args.preset, "budget": PRESETS[args.preset],
          "video_duration_seconds": None, "requested_range": [args.start, args.end], "processed_range": [args.start, args.start],
          "remaining_range": None, "content_source": "none", "transcript_status": "unavailable",
          "transcript_coverage_seconds": 0, "frames": [], "packs": [], "api_calls": [],

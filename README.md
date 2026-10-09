@@ -4,7 +4,7 @@
 
 它提供本地网页、Codex skill 和独立 Python/CLI 入口，调用使用者自己配置的视觉模型。所有入口共用素材、证据与笔记结构，适合课程、讲座、教程和研究解读视频。
 
-目前支持 **Bilibili、YouTube 单个视频与本地视频**。默认生成离线 HTML；也可以输出带配图或纯文本 Markdown，并通过本机已有飞书能力创建文档。平台权限、地区或接口变化可能影响素材访问。
+目前支持 **Bilibili、YouTube、小红书（RedNote）单个视频与本地视频**。默认生成离线 HTML；也可以输出带配图或纯文本 Markdown，并通过本机已有飞书能力创建文档。平台权限、地区或接口变化可能影响素材访问；小红书本轮验证了跳转和登录停止，真实转写与总结尚未验收。
 
 ## 能得到什么
 
@@ -25,7 +25,7 @@
 uv run --python 3.12 --with pillow python scripts/video_notes.py serve --open
 ```
 
-也可运行 macOS/Linux 的 `scripts/start-local.sh` 或 Windows 的 `scripts/start-local.cmd`。网页中粘贴视频链接，填写自己的模型地址、模型名和密钥，选择区间后开始分析。可以查看进度、打开历史、阅读 HTML 并下载 HTML/Markdown 配图包。密钥只用于当前任务，不写入浏览器存储或磁盘；完成后的查看和下载不调用模型。
+也可运行 macOS/Linux 的 `scripts/start-local.sh` 或 Windows 的 `scripts/start-local.cmd`。网页中粘贴视频链接或小红书分享文字，填写自己的模型地址、模型名和密钥，选择区间后开始分析。可以查看进度、打开历史、阅读 HTML 并下载 HTML/Markdown 配图包。密钥只用于当前任务，不写入浏览器存储或磁盘；完成后的查看和下载不调用模型。
 
 启动、依赖配置、中断恢复和隐私说明见 [本地网页使用指南](references/local-product.md)。真实本地链路在 macOS 验证，Windows 文件锁分支已测试，尚未完成 Windows 真机验收。
 
@@ -33,7 +33,7 @@ uv run --python 3.12 --with pillow python scripts/video_notes.py serve --open
 
 需要 Python 3.11+、FFmpeg/FFprobe；概览联系表与课件候选扫描使用 Pillow，可以通过 `uv run --with pillow` 隔离提供。
 
-按需依赖：本地 ASR 使用 `uv` 和固定版本运行时；YouTube 使用 yt-dlp/EJS 与已有 Deno ≥ 2.3 或 Node ≥ 22；飞书需要已登录的 `lark-cli` user 身份。YouTube 依赖不影响 B站/本地路径，飞书依赖不影响 HTML/MD。详见 [YouTube](references/youtube.md) 与 [飞书交付](references/feishu.md)。真实媒体/转写链路已在 macOS 验证，其他系统需分别检查。
+按需依赖：本地 ASR 使用 `uv` 和固定版本运行时；YouTube 使用 yt-dlp/EJS 与已有 Deno ≥ 2.3 或 Node ≥ 22；飞书需要已登录的 `lark-cli` user 身份。YouTube 依赖不影响 B站/本地路径，飞书依赖不影响 HTML/MD。小红书默认匿名提取；需要已有登录会话时可显式连接外部 xiaohongshu-skill。详见 [YouTube](references/youtube.md)、[小红书](references/rednote.md) 与 [飞书交付](references/feishu.md)。真实媒体/转写链路已在 macOS 验证，其他系统需分别检查。
 
 新安装到 Codex 的全局 skill 目录：
 

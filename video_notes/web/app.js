@@ -173,12 +173,13 @@
     if (subtotals.length) subtotals.push("已知小计不代表完整用量或账单");
     notice("usage-subtotal", subtotals.join("。"));
     show("resume-form", Boolean(job.can_resume) && !active(job));
+    show("resume-source", Boolean(source && ["www.xiaohongshu.com", "xiaohongshu.com", "xhslink.cn", "xhslink.com"].includes(new URL(source).hostname)));
     for (const button of document.querySelectorAll("[data-artifact]")) button.hidden = !artifactURL(job.artifacts?.[button.dataset.artifact], job.id);
     show("artifact-controls", Array.from(document.querySelectorAll("[data-artifact]")).some((button) => !button.hidden));
     renderPreview(job);
   }
   async function selectJob(id) {
-    if (state.selected !== id) { clearPreview(); $("resume-key").value = ""; notice("resume-error", ""); }
+    if (state.selected !== id) { clearPreview(); $("resume-key").value = ""; $("resume-url").value = ""; notice("resume-error", ""); }
     state.selected = id; renderHistory();
     const known = state.jobs.find((job) => job.id === id); if (known) renderJob(known);
     try { const job = await request(`/api/jobs/${encodeURIComponent(id)}`); if (state.selected === id) renderJob(job); }
@@ -208,6 +209,17 @@
       budget: {max_calls: Number($("max-calls").value), max_input_chars: Number($("max-input-chars").value), max_images: Number($("max-images").value),
         output_tokens_per_call: output, max_reserved_output_tokens: reserved}};
   }
+  $("video-url").addEventListener("paste", (event) => {
+    const content = event.clipboardData?.getData("text") || "";
+    const match = content.match(/https:\/\/[^\s<>]+/);
+    if (!match) return;
+    try {
+      const candidate = new URL(match[0]);
+      if (["www.xiaohongshu.com", "xiaohongshu.com", "xhslink.cn", "xhslink.com"].includes(candidate.hostname)) {
+        event.preventDefault(); $("video-url").value = candidate.href;
+      }
+    } catch (_) { /* Leave invalid text for the form's normal validation. */ }
+  });
   $("analysis-form").addEventListener("submit", async (event) => {
     event.preventDefault(); if (state.posting || state.jobs.some(active)) return;
     notice("form-error", ""); let payload;
@@ -227,6 +239,8 @@
   $("resume-form").addEventListener("submit", async (event) => {
     event.preventDefault(); if (state.posting || state.jobs.some(active) || !state.selected) return;
     notice("resume-error", ""); const payload = {api_key: $("resume-key").value};
+    if ($("resume-url").value.trim()) payload.url = $("resume-url").value.trim();
+    $("resume-url").value = "";
     $("resume-key").value = ""; state.posting = true; updateSubmitButton();
     try { const job = await request(`/api/jobs/${encodeURIComponent(state.selected)}/resume`, {method: "POST", body: payload}); renderJob(job); await refreshHistory(); }
     catch (error) { notice("resume-error", error.message); }
@@ -249,13 +263,13 @@
   });
   $("new-note").addEventListener("click", () => {
     state.selected = null; clearPreview(); renderHistory(); show("job-detail", false); show("reading-empty", true);
-    $("resume-key").value = ""; $("video-url").focus();
+    $("resume-key").value = ""; $("resume-url").value = ""; $("video-url").focus();
   });
   $("refresh-history").addEventListener("click", refreshHistory);
   $("refresh-readiness").addEventListener("click", async () => {
     try { await loadSession(); toast("已重新检查运行环境。"); } catch (error) { notice("connection-notice", error.message); }
   });
-  window.addEventListener("pagehide", () => { clearTimeout(state.pollTimer); clearPreview(); $("api-key").value = ""; $("resume-key").value = ""; });
+  window.addEventListener("pagehide", () => { clearTimeout(state.pollTimer); clearPreview(); $("api-key").value = ""; $("resume-key").value = ""; $("resume-url").value = ""; });
   (async () => {
     try { await loadSession(); await refreshHistory(); if (state.jobs.length) await selectJob(state.jobs[0].id); state.pollTimer = setTimeout(poll, 2000); }
     catch (_) { notice("connection-notice", "无法连接本机服务。请确认服务仍在运行，然后刷新页面。"); }

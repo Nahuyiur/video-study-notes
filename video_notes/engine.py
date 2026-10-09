@@ -430,7 +430,8 @@ def _safe_failure(directory, error, provider):
 
 def analyze_prepared(run_dir, *, provider, budget=None, outputs=("html", "md"), focus="", language="zh",
                      allow_asr=True, strategy="slides", asr_model="small", asr_language="auto",
-                     media=None, use_env_cookie=False, ledger=None, prices=None):
+                     media=None, use_env_cookie=False, ledger=None, prices=None,
+                     rednote_access_url=None, rednote_skill=None):
     """Understand an unfinished prepared run, or export a frozen existing note.
 
     language controls note output only; ASR language has its own explicit option.
@@ -439,7 +440,8 @@ def analyze_prepared(run_dir, *, provider, budget=None, outputs=("html", "md"), 
     directory = Path(run_dir).expanduser().resolve()
     budget = budget or api.ApiBudget()
     try:
-        with run_lock(directory), activity(directory, "analyze-prepared"), contextlib.redirect_stdout(io.StringIO()):
+        from .sources import source_access
+        with source_access(rednote_access_url=rednote_access_url, rednote_skill=rednote_skill), run_lock(directory), activity(directory, "analyze-prepared"), contextlib.redirect_stdout(io.StringIO()):
             outputs = tuple(outputs)
             _, run = open_run(directory)
             if run.get("status") == "finished":
@@ -462,14 +464,16 @@ def analyze_prepared(run_dir, *, provider, budget=None, outputs=("html", "md"), 
 def analyze(video, *, run_dir, provider, budget=None, start=0, end=None, outputs=("html", "md"),
             preset="economy", focus="", language="zh", allow_asr=True, strategy="slides",
             asr_model="small", asr_language="auto", source_json=None, transcript=None,
-            page=None, use_env_cookie=False, media=None, ledger=None, prices=None):
+            page=None, use_env_cookie=False, media=None, ledger=None, prices=None,
+            rednote_access_url=None, rednote_skill=None):
     """Acquire a URL/local video and generate one evidence-bound StudyNote."""
     directory = Path(run_dir).expanduser().resolve()
     budget = budget or api.ApiBudget()
     try:
-        with run_lock(directory), activity(directory, "analyze"), contextlib.redirect_stdout(io.StringIO()):
+        from .sources import source_access, persistence_video
+        with source_access(video, rednote_access_url=rednote_access_url, rednote_skill=rednote_skill), run_lock(directory), activity(directory, "analyze"), contextlib.redirect_stdout(io.StringIO()):
             outputs = tuple(outputs)
-            launch = {"video_sha256": hashlib.sha256(str(video).encode()).hexdigest(), "start": start,
+            launch = {"video_sha256": hashlib.sha256(persistence_video(video).encode()).hexdigest(), "start": start,
                 "end": end, "preset": preset, "page": page, "source_json": _file_identity(source_json),
                 "transcript": _file_identity(transcript)}
             if (directory / "run.json").exists() and load(directory / "run.json").get("status") == "finished":
@@ -481,7 +485,7 @@ def analyze(video, *, run_dir, provider, budget=None, start=0, end=None, outputs
             if not (directory / "run.json").exists():
                 materials.prepare(argparse.Namespace(video=str(video), out=str(directory), source_json=source_json,
                     transcript=transcript, page=page, start=start, end=end, preset=preset,
-                    session_log=None, ledger=ledger, use_env_cookie=use_env_cookie))
+                    session_log=None, ledger=ledger, use_env_cookie=use_env_cookie, rednote_skill=rednote_skill))
             settings = _settings(provider, budget, focus=focus, language=language, allow_asr=allow_asr,
                 strategy=strategy, asr_model=asr_model, asr_language=asr_language, media=media, prices=prices)
             _freeze(directory / "api" / "execution.json", settings, "API analysis settings")
@@ -507,6 +511,8 @@ def main(argv=None):
     parser.add_argument("--preset", choices=PRESETS, default="economy"); parser.add_argument("--start", type=float, default=0)
     parser.add_argument("--end", type=float); parser.add_argument("--page", type=int); parser.add_argument("--source-json")
     parser.add_argument("--transcript"); parser.add_argument("--media"); parser.add_argument("--use-env-cookie", action="store_true")
+    parser.add_argument("--rednote-skill", help="Explicit external read-only RedNote skill directory")
+    parser.add_argument("--rednote-access-stdin", action="store_true", help="Read a fresh RedNote access URL from stdin JSON")
     parser.add_argument("--ledger"); parser.add_argument("--prices", help="Verified exact-model USD price JSON; otherwise cost is unknown")
     parser.add_argument("--max-calls", type=int, default=3); parser.add_argument("--max-input-chars", type=int, default=80_000)
     parser.add_argument("--max-images", type=int, default=16); parser.add_argument("--output-tokens", type=int, default=4096)
@@ -515,6 +521,16 @@ def main(argv=None):
     supplied = list(sys.argv[1:] if argv is None else argv)
     args = parser.parse_args(supplied)
     try:
+        access_url = None
+        if args.rednote_access_stdin:
+            from .sources.rednote import stdin_access
+            access_url = stdin_access()
+        if args.video:
+            from .sources import persistence_video
+            from .sources.rednote import is_rednote
+            from urllib.parse import urlsplit
+            if is_rednote(args.video) and urlsplit(args.video).query:
+                raise ValueError("RedNote access queries must be supplied through --rednote-access-stdin")
         provider = api.ProviderConfig(args.base_url, args.model, api_key_env=args.api_key_env,
             token_parameter=args.token_parameter, json_mode=not args.no_json_mode,
             timeout_seconds=args.timeout,
@@ -523,7 +539,8 @@ def main(argv=None):
         common = {"provider": provider, "budget": budget, "outputs": args.format.split(","), "focus": args.focus,
             "language": args.language, "allow_asr": not args.no_asr, "asr_model": args.asr_model,
             "asr_language": args.asr_language, "strategy": args.strategy, "media": args.media,
-            "use_env_cookie": args.use_env_cookie, "ledger": args.ledger, "prices": load(args.prices) if args.prices else None}
+            "use_env_cookie": args.use_env_cookie, "ledger": args.ledger, "prices": load(args.prices) if args.prices else None,
+            "rednote_access_url": access_url, "rednote_skill": args.rednote_skill}
         if args.run:
             prepare_flags = {"--video", "--out", "--start", "--end", "--preset", "--page", "--source-json", "--transcript"}
             if any(token.split("=", 1)[0] in prepare_flags for token in supplied):
