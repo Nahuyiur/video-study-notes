@@ -37,7 +37,20 @@ def _evidence(note, refs):
         second = {**segments, **frames}[ref]
         label = f"{ref} · {stamp(second)}"
         labels.append(link(label, jump(url, second)) if url else esc(label))
-    return '<p class="muted evidence">证据：' + " · ".join(labels) + "</p>" if labels else ""
+    if not labels:
+        return ""
+    references = " · ".join(labels)
+    return (f'<div class="evidence-set"><details class="evidence"><summary>查看证据'
+            f'<span>{len(labels)} 条时间线索</span></summary><p class="evidence-links">证据：{references}</p></details>'
+            f'<p class="evidence-print" aria-hidden="true">证据：{references}</p></div>')
+
+
+def _attribution(row):
+    attribution = row.get("attribution", "speaker")
+    if attribution == "speaker":
+        return ""
+    label = "Agent 解读" if attribution == "agent" else "尚不确定"
+    return f'<p class="muted attribution">{label}</p>'
 
 
 def _figure(directory, note, row):
@@ -48,7 +61,8 @@ def _figure(directory, note, row):
     time_link = link(time + " · 返回视频", jump(url, frame["timestamp"])) if url else esc(time)
     return (f'<figure><div class="figure-top"><h3>{esc(row.get("title", ""))}</h3><span>{time_link}</span></div>'
             f'<img src="data:image/jpeg;base64,{encoded}" alt="{esc(row.get("title", ""))}" loading="lazy">'
-            f'<figcaption>{esc(row.get("caption", ""))}</figcaption>{_evidence(note, row.get("evidence_refs", []))}</figure>')
+            f'<figcaption>{esc(row.get("caption", ""))}</figcaption>{_attribution(row)}'
+            f'{_evidence(note, row.get("evidence_refs", []))}</figure>')
 
 
 def _block(directory, note, row):
@@ -67,9 +81,8 @@ def _block(directory, note, row):
         body += '</tbody></table></div>'
     else:
         return _figure(directory, note, row)
-    if row["attribution"] != "speaker":
-        body += '<p class="muted">' + ("Agent 解读" if row["attribution"] == "agent" else "尚不确定") + '</p>'
-    return body + _evidence(note, row["evidence_refs"])
+    width = " wide-block" if kind in ("code", "formula", "table") else ""
+    return f'<div class="lesson-block{width}">{body}{_attribution(row)}{_evidence(note, row["evidence_refs"])}</div>'
 
 
 def render_note(directory, note):
@@ -86,7 +99,7 @@ def render_note(directory, note):
     def section(identifier, title, body):
         if body:
             nav.append(f'<a href="#{identifier}">{esc(title)}</a>')
-            chunks.append(f'<section id="{identifier}"><h2>{esc(title)}</h2>{body}</section>')
+            chunks.append(f'<section id="{identifier}" class="lesson-section"><h2>{esc(title)}</h2>{body}</section>')
 
     section("overview", "核心总结", f'<div class="takeaway">{esc(note["takeaway"])}</div>' + _evidence(note, note["takeaway_evidence_refs"]))
     body = ""
@@ -109,7 +122,6 @@ def render_note(directory, note):
     sources = ([{"label": "原视频", "url": url}] if url else []) + note["sources"]
     section("sources", "来源", '<div class="sources">' + " · ".join(link(s["label"], s["url"]) for s in sources) + '</div>' if sources else "")
     style = (Path(__file__).resolve().parents[2] / "assets/summary.css").read_text()
-    style += '\npre{white-space:pre-wrap;overflow-wrap:anywhere;padding:1rem;background:#f5f5f2;border-radius:8px}code{font-family:monospace}.table-scroll{overflow:auto}table{border-collapse:collapse;width:100%}th,td{padding:.7rem;border:1px solid #ddd;text-align:left}.evidence{font-size:.78rem}.evidence a{overflow-wrap:anywhere}'
     summary_hash = note.get("content_hash") or digest({key: value for key, value in note.items() if key != "snapshot"})
     status = usage.get("result_status", "partial")
     coverage = "讲解全段 · 画面抽样" if status == "complete" else "材料覆盖有限 · " + status
@@ -119,4 +131,4 @@ def render_note(directory, note):
     count = materials.get("overview_frames_extracted", 0) + materials.get("detail_frames_extracted", 0)
     return f'''<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="summary-sha256" content="{summary_hash}"><title>{esc(note["title"])} · 视频总结</title><style>{style}</style></head>
-<body><aside><div class="brand">VIDEO NOTES<span>视频阅读笔记</span></div><nav aria-label="目录">{"".join(nav)}</nav><p class="aside-note">讲解与画面一起读<br>原视频时间戳可点击</p></aside><main><header><div class="eyebrow">视频总结 <span>{esc(coverage)}</span></div><h1>{esc(note["title"])}</h1>{subtitle}<div class="header-meta">{esc(stamp(left))}–{esc(stamp(right))} · {esc(usage.get("content_source", "unknown"))} · {count} 个采样画面</div></header>{"".join(chunks)}<footer>图片已嵌入 · 支持离线阅读与浏览器打印 · 摘要版本 {summary_hash[:12]}</footer></main></body></html>'''
+<body class="lecture-folio"><a class="skip-link" href="#overview">跳到笔记正文</a><div class="folio-shell"><header class="course-cover"><div class="eyebrow">视频总结 <span>{esc(coverage)}</span></div><h1>{esc(note["title"])}</h1>{subtitle}<div class="header-meta">{esc(stamp(left))}–{esc(stamp(right))} · {esc(usage.get("content_source", "unknown"))} · {count} 个采样画面</div></header><aside class="chapter-shelf"><div class="brand">VIDEO NOTES<span>视频阅读笔记</span></div><nav aria-label="目录">{"".join(nav)}</nav><p class="aside-note">讲解与画面一起读 · 原视频时间戳可点击</p></aside><main class="lecture-body">{"".join(chunks)}<footer>图片已嵌入 · 支持离线阅读与浏览器打印 · 摘要版本 {summary_hash[:12]}</footer></main></div></body></html>'''

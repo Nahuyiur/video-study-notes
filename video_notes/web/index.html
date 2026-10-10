@@ -12,14 +12,18 @@
   <a class="skip-link" href="#workspace">跳到学习工作台</a>
   <div class="app-shell">
     <aside class="library" aria-label="笔记历史">
-      <a class="brand" href="/" aria-label="视频学习笔记首页">
-        <svg viewBox="0 0 36 36" fill="none" aria-hidden="true"><path d="M5 7h10a6 6 0 0 1 6 6v17c-2-3-5-4-8-4H5V7Z"/><path d="M21 13a6 6 0 0 1 6-6h5v19h-3c-3 0-6 1-8 4"/><path d="m10 13 6 4-6 4v-8Z"/></svg>
-        <span>视频学习笔记<small>Video Study Notes</small></span>
-      </a>
-      <button id="new-note" class="new-note" type="button"><span aria-hidden="true">＋</span> 新建学习笔记</button>
-      <div class="library-heading"><h2>最近的学习</h2><button id="refresh-history" class="icon-button" type="button" aria-label="刷新笔记历史" title="刷新笔记历史">↻</button></div>
-      <p id="history-empty" class="history-empty">第一份笔记会出现在这里。<br>关闭页面后，也能回来看。</p>
-      <ul id="job-list" class="job-list"></ul>
+      <div class="library-row">
+        <a class="brand" href="/" aria-label="视频学习笔记首页">
+          <svg viewBox="0 0 36 36" fill="none" aria-hidden="true"><path d="M5 7h10a6 6 0 0 1 6 6v17c-2-3-5-4-8-4H5V7Z"/><path d="M21 13a6 6 0 0 1 6-6h5v19h-3c-3 0-6 1-8 4"/><path d="m10 13 6 4-6 4v-8Z"/></svg>
+          <span>视频学习笔记<small>Video Study Notes</small></span>
+        </a>
+        <button id="new-note" class="new-note" type="button"><span aria-hidden="true">＋</span> 新建学习笔记</button>
+      </div>
+      <div class="history-shelf">
+        <div class="library-heading"><h2>最近的学习</h2><button id="refresh-history" class="icon-button" type="button" aria-label="刷新笔记历史" title="刷新笔记历史">↻</button></div>
+        <p id="history-empty" class="history-empty">第一份笔记会出现在这里。<br>关闭页面后，也能回来看。</p>
+        <ul id="job-list" class="job-list"></ul>
+      </div>
       <p class="library-footnote">笔记保存在这台电脑。<br>模型调用使用你自己的 API。</p>
     </aside>
 
@@ -38,59 +42,68 @@
         <section class="input-panel" aria-labelledby="input-heading">
           <div class="panel-heading"><h2 id="input-heading">开始一段学习</h2><span>Bilibili / YouTube / 小红书</span></div>
           <form id="analysis-form" autocomplete="off">
-            <label for="video-url">视频链接</label>
-            <input id="video-url" name="video_url" type="url" placeholder="粘贴视频链接或小红书分享文字" required maxlength="2048">
-            <p class="field-hint">小红书如需登录，可连接本机已有的小红书 skill；访问令牌只用于当前任务。</p>
-            <div class="range-fields">
-              <div><label for="range-start">从哪里开始 <span>秒</span></label><input id="range-start" name="range_start" type="number" min="0" step="0.1" value="0" inputmode="decimal" required></div>
-              <div><label for="range-end">在哪里结束 <span>可留空</span></label><input id="range-end" name="range_end" type="number" min="0.1" step="0.1" placeholder="视频结束" inputmode="decimal"></div>
+            <div class="setup-grid">
+              <div class="setup-source">
+                <div class="setup-label"><span aria-hidden="true">01</span><h3>准备课程</h3></div>
+                <label for="video-url">视频链接</label>
+                <input id="video-url" name="video_url" type="url" placeholder="粘贴视频链接或小红书分享文字" required maxlength="2048">
+                <p class="field-hint">小红书如需登录，可连接本机已有的小红书 skill；访问令牌只用于当前任务。</p>
+                <div class="range-fields">
+                  <div><label for="range-start">从哪里开始 <span>秒</span></label><input id="range-start" name="range_start" type="number" min="0" step="0.1" value="0" inputmode="decimal" required></div>
+                  <div><label for="range-end">在哪里结束 <span>可留空</span></label><input id="range-end" name="range_end" type="number" min="0.1" step="0.1" placeholder="视频结束" inputmode="decimal"></div>
+                </div>
+                <p class="field-hint">长课可先选一段。笔记会标明实际处理的范围。</p>
+                <label for="study-focus">你想弄明白什么？ <span>选填</span></label>
+                <textarea id="study-focus" name="study_focus" rows="2" maxlength="2000" placeholder="例如：梳理方法原理、推导过程和实验结论"></textarea>
+                <fieldset class="preset-fields">
+                  <legend>学习深度</legend>
+                  <div class="preset-options">
+                    <label class="preset-option"><input type="radio" name="preset" value="economy" checked><span><strong>快速梳理</strong><small>较少抽帧，最多 2 次调用</small></span></label>
+                    <label class="preset-option"><input type="radio" name="preset" value="standard"><span><strong>细读课程</strong><small>更多画面，最多 3 次调用</small></span></label>
+                  </div>
+                </fieldset>
+              </div>
+              <div class="setup-provider">
+                <div class="config-heading"><span class="setup-number" aria-hidden="true">02</span><h3>你的模型服务</h3><span>需要支持图片输入</span></div>
+                <label for="base-url">API 地址</label>
+                <input id="base-url" name="provider_base_url" type="url" placeholder="https://your-provider.example/v1" required maxlength="2048" spellcheck="false">
+                <label for="model-name">模型名称</label>
+                <input id="model-name" name="provider_model" type="text" placeholder="填写服务提供方的模型名" required maxlength="200" spellcheck="false">
+                <label for="api-key">API 密钥</label>
+                <input id="api-key" name="current_task_key" type="password" placeholder="只用于本次任务" required maxlength="4096" autocomplete="off" spellcheck="false">
+                <p class="privacy-note"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3.5" y="7" width="9" height="7" rx="1.5"/><path d="M5 7V4a3 3 0 0 1 6 0v3"/></svg>提交后清空密钥输入框，不写入浏览器或任务文件。</p>
+                <details class="advanced-settings">
+                  <summary>处理选项与调用上限</summary>
+                  <div class="advanced-body">
+                    <label for="sampling-strategy">画面抽样方式</label>
+                    <select id="sampling-strategy" name="sampling_strategy"><option value="hybrid">均匀覆盖并补充画面变化</option><option value="slides">优先捕捉课件变化</option><option value="uniform">均匀覆盖视频时间线</option></select>
+                    <label class="checkbox-label"><input id="allow-asr" name="allow_asr" type="checkbox" checked><span>没有字幕时，允许在本机转写语音</span></label>
+                    <p class="field-hint">首次语音转写可能需要下载转写模型。</p>
+                    <div class="range-fields">
+                      <div><label for="max-calls">最多调用次数</label><input id="max-calls" type="number" min="2" max="8" value="2" required></div>
+                      <div><label for="output-tokens">每次输出上限</label><input id="output-tokens" type="number" min="128" max="16384" value="2048" required></div>
+                    </div>
+                    <div class="range-fields">
+                      <div><label for="total-output-tokens">总预留输出上限</label><input id="total-output-tokens" type="number" min="256" max="65536" value="4096" required></div>
+                      <div><label for="max-images">图片提交总上限</label><input id="max-images" type="number" min="1" max="64" value="6" required></div>
+                    </div>
+                    <div class="range-fields">
+                      <div><label for="max-input-chars">输入字符总上限</label><input id="max-input-chars" type="number" min="1000" max="200000" value="24000" required></div>
+                      <div><label for="request-timeout">每次等待 <span>秒</span></label><input id="request-timeout" type="number" min="1" max="600" step="1" value="90" required></div>
+                    </div>
+                    <label for="token-parameter">服务使用的输出参数</label>
+                    <select id="token-parameter"><option value="max_completion_tokens">max_completion_tokens</option><option value="max_tokens">max_tokens</option></select>
+                    <label class="checkbox-label"><input id="json-mode" type="checkbox" checked><span>服务支持 JSON 输出模式</span></label>
+                    <p class="field-hint">上限用于控制调用量；费用取决于你的服务价格。缺少用量或价格时，会显示“未知”。</p>
+                  </div>
+                </details>
+              </div>
             </div>
-            <p class="field-hint">长课可先选一段。笔记会标明实际处理的范围。</p>
-            <label for="study-focus">你想弄明白什么？ <span>选填</span></label>
-            <textarea id="study-focus" name="study_focus" rows="2" maxlength="2000" placeholder="例如：梳理方法原理、推导过程和实验结论"></textarea>
-            <fieldset class="preset-fields">
-              <legend>学习深度</legend>
-              <div class="preset-options">
-                <label class="preset-option"><input type="radio" name="preset" value="economy" checked><span><strong>快速梳理</strong><small>较少抽帧，最多 2 次调用</small></span></label>
-                <label class="preset-option"><input type="radio" name="preset" value="standard"><span><strong>细读课程</strong><small>更多画面，最多 3 次调用</small></span></label>
-              </div>
-            </fieldset>
-            <div class="config-heading"><h3>你的模型服务</h3><span>需要支持图片输入</span></div>
-            <label for="base-url">API 地址</label>
-            <input id="base-url" name="provider_base_url" type="url" placeholder="https://your-provider.example/v1" required maxlength="2048" spellcheck="false">
-            <label for="model-name">模型名称</label>
-            <input id="model-name" name="provider_model" type="text" placeholder="填写服务提供方的模型名" required maxlength="200" spellcheck="false">
-            <label for="api-key">API 密钥</label>
-            <input id="api-key" name="current_task_key" type="password" placeholder="只用于本次任务" required maxlength="4096" autocomplete="off" spellcheck="false">
-            <p class="privacy-note"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3.5" y="7" width="9" height="7" rx="1.5"/><path d="M5 7V4a3 3 0 0 1 6 0v3"/></svg>提交后清空密钥输入框，不写入浏览器或任务文件。</p>
-            <details class="advanced-settings">
-              <summary>处理选项与调用上限</summary>
-              <div class="advanced-body">
-                <label for="sampling-strategy">画面抽样方式</label>
-                <select id="sampling-strategy" name="sampling_strategy"><option value="hybrid">均匀覆盖并补充画面变化</option><option value="slides">优先捕捉课件变化</option><option value="uniform">均匀覆盖视频时间线</option></select>
-                <label class="checkbox-label"><input id="allow-asr" name="allow_asr" type="checkbox" checked><span>没有字幕时，允许在本机转写语音</span></label>
-                <p class="field-hint">首次语音转写可能需要下载转写模型。</p>
-                <div class="range-fields">
-                  <div><label for="max-calls">最多调用次数</label><input id="max-calls" type="number" min="2" max="8" value="2" required></div>
-                  <div><label for="output-tokens">每次输出上限</label><input id="output-tokens" type="number" min="128" max="16384" value="2048" required></div>
-                </div>
-                <div class="range-fields">
-                  <div><label for="total-output-tokens">总预留输出上限</label><input id="total-output-tokens" type="number" min="256" max="65536" value="4096" required></div>
-                  <div><label for="max-images">图片提交总上限</label><input id="max-images" type="number" min="1" max="64" value="6" required></div>
-                </div>
-                <div class="range-fields">
-                  <div><label for="max-input-chars">输入字符总上限</label><input id="max-input-chars" type="number" min="1000" max="200000" value="24000" required></div>
-                  <div><label for="request-timeout">每次等待 <span>秒</span></label><input id="request-timeout" type="number" min="1" max="600" step="1" value="90" required></div>
-                </div>
-                <label for="token-parameter">服务使用的输出参数</label>
-                <select id="token-parameter"><option value="max_completion_tokens">max_completion_tokens</option><option value="max_tokens">max_tokens</option></select>
-                <label class="checkbox-label"><input id="json-mode" type="checkbox" checked><span>服务支持 JSON 输出模式</span></label>
-                <p class="field-hint">上限用于控制调用量；费用取决于你的服务价格。缺少用量或价格时，会显示“未知”。</p>
-              </div>
-            </details>
-            <div id="form-error" class="notice notice-error" role="alert" hidden></div>
-            <button id="start-analysis" class="primary-button" type="submit" disabled>生成学习笔记</button>
-            <p class="submit-hint">字幕与抽样画面将发送给你填写的模型服务。</p>
+            <div class="setup-submit">
+              <div id="form-error" class="notice notice-error" role="alert" hidden></div>
+              <button id="start-analysis" class="primary-button" type="submit" disabled>生成学习笔记</button>
+              <p class="submit-hint">字幕与抽样画面将发送给你填写的模型服务。</p>
+            </div>
           </form>
         </section>
 

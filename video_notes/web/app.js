@@ -59,7 +59,7 @@
     let response;
     try { response = await fetch(path, {method: options.method || "GET", headers, body: options.body ? JSON.stringify(options.body) : undefined,
       credentials: "omit", cache: "no-store", redirect: "error"}); }
-    catch (_) { throw new Error(options.method === "POST" ? "没有收到提交结果。请先检查左侧任务历史；再次提交时不会自动重试模型调用。" : "无法连接本机服务。请确认服务仍在运行，然后刷新页面。"); }
+    catch (_) { throw new Error(options.method === "POST" ? "没有收到提交结果。请先检查任务历史；再次提交时不会自动重试模型调用。" : "无法连接本机服务。请确认服务仍在运行，然后刷新页面。"); }
     if (!response.ok) {
       let message = "请求未完成，请检查输入后再试。";
       try { const body = await response.json(); if (typeof body.error?.message === "string") message = body.error.message; } catch (_) { /* No provider body is displayed. */ }

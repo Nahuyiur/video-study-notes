@@ -5,12 +5,53 @@ import json
 import shutil
 import tempfile
 import unittest
+from html.parser import HTMLParser
 from pathlib import Path
 from unittest.mock import patch
 
 from video_notes import notes
 from video_notes.delivery import html, markdown
 from video_notes.run import save
+
+
+class EvidenceMarkup(HTMLParser):
+    """Collect screen and print references, including their disclosure ancestry."""
+    def __init__(self):
+        super().__init__()
+        self.stack = []
+        self.details = []
+        self.print_ancestors = []
+        self.links = {"screen": [], "print": []}
+        self.text = {"screen": [], "print": []}
+
+    def mode(self):
+        for _, attrs in reversed(self.stack):
+            classes = attrs.get("class", "").split()
+            if "evidence-links" in classes:
+                return "screen"
+            if "evidence-print" in classes:
+                return "print"
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "details" and "evidence" in attrs.get("class", "").split():
+            self.details.append(attrs)
+        if "evidence-print" in attrs.get("class", "").split():
+            self.print_ancestors.append(tuple(tag for tag, _ in self.stack))
+        if tag not in {"meta", "img", "br", "hr", "link", "input"}:
+            self.stack.append((tag, attrs))
+        mode = self.mode()
+        if tag == "a" and mode:
+            self.links[mode].append(attrs["href"])
+
+    def handle_endtag(self, tag):
+        if self.stack and self.stack[-1][0] == tag:
+            self.stack.pop()
+
+    def handle_data(self, data):
+        mode = self.mode()
+        if mode:
+            self.text[mode].append(data)
 
 
 class StudyNotes(unittest.TestCase):
@@ -164,6 +205,33 @@ class StudyNotes(unittest.TestCase):
         self.assertIn('a\\|b', rendered_md)
         self.assertIn('?v=test1234567&amp;t=100', rendered_html)
         self.assertIn('?v=test1234567&t=100', rendered_md)
+
+    def test_collapsible_evidence_has_equivalent_print_references_outside_details(self):
+        note = notes.save_note(self.root, self.data)
+        original = (self.root / 'notes/note-v001.json').read_bytes()
+        markup = EvidenceMarkup()
+        markup.feed(html.render_note(self.root, note))
+        self.assertTrue(markup.details)
+        self.assertTrue(all('open' not in attrs for attrs in markup.details))
+        self.assertEqual(len(markup.details), len(markup.print_ancestors))
+        self.assertTrue(all('details' not in ancestors for ancestors in markup.print_ancestors))
+        self.assertEqual(markup.links['screen'], markup.links['print'])
+        self.assertEqual(markup.text['screen'], markup.text['print'])
+        references = ''.join(markup.text['screen'])
+        self.assertIn('segment:s0001 · 00:01:40', references)
+        self.assertIn('frame:f0001 · 00:02:00', references)
+        self.assertTrue(all('t=100' in url or 't=120' in url for url in markup.links['screen']))
+        self.assertEqual((self.root / 'notes/note-v001.json').read_bytes(), original)
+
+    def test_image_blocks_keep_agent_and_uncertain_attribution_visible(self):
+        for attribution, label in [('agent', 'Agent 解读'), ('uncertain', '尚不确定')]:
+            with self.subTest(attribution=attribution):
+                data = copy.deepcopy(self.data)
+                data['sections'][0]['blocks'][-1]['attribution'] = attribution
+                note = notes.save_note(self.root, data)
+                image_block = html.render_note(self.root, note).split('<figure>', 1)[1].split('</figure>', 1)[0]
+                self.assertIn(label, image_block)
+                self.assertIn('frame:f0001', image_block)
 
     def test_urls_and_paths_are_checked(self):
         for url in ['javascript:alert(1)', 'https://u:secret@example.org', 'https://example.org\nunsafe']:
