@@ -74,7 +74,7 @@ class ProductTests(unittest.TestCase):
                    {"start": float("nan")}, {"end": 50}, {"api_key": ""},
                    {"provider": {"base_url": "https://u:password@synthetic.example/v1", "model": "test"}},
                    {"budget": {"max_calls": 99}}, {"budget": {"output_tokens_per_call": 500, "max_reserved_output_tokens": 999}},
-                   {"focus": "synthetic-test-credential"}, {"media": "/private/file"}]
+                   {"focus": "synthetic-test-credential"}, {"media": "/private/file"}, {"strategy": "unknown"}]
         for change in changes:
             body = payload()
             body.update(change)
@@ -85,6 +85,17 @@ class ProductTests(unittest.TestCase):
         message = product.safe_failure("failed", "RedNote login_required synthetic-access-token")
         self.assertIn("已停止", message)
         self.assertNotIn("synthetic-access-token", message)
+
+    def test_hybrid_is_default_and_existing_sampling_strategies_remain_available(self):
+        body = payload()
+        _, spec, _ = product.submission(body)
+        self.assertEqual(spec["strategy"], "hybrid")
+        self.assertEqual(spec["budget"]["max_images"], 16)
+        self.assertEqual(spec["budget"]["max_calls"], 3)
+        for strategy in ("hybrid", "slides", "uniform"):
+            with self.subTest(strategy=strategy):
+                _, spec, _ = product.submission({**body, "strategy": strategy})
+                self.assertEqual(spec["strategy"], strategy)
 
     def test_rednote_access_link_is_ephemeral_and_resume_matches_note(self):
         note = "0123456789abcdef01234567"
@@ -322,7 +333,7 @@ class ProductTests(unittest.TestCase):
         config = api.ProviderConfig(**row["spec"]["provider"], api_key=body["api_key"])
         budget = api.ApiBudget()
         settings = engine._settings(config, budget, focus="", language="zh", allow_asr=False,
-                    strategy="slides", asr_model="small", asr_language="auto", media=None, prices=None)
+                    strategy=row["spec"]["strategy"], asr_model="small", asr_language="auto", media=None, prices=None)
         calls.durable_save(directory / "api/execution.json", settings)
         calls.durable_save(directory / "api/launch.json", {"video_sha256": hashlib.sha256(row["spec"]["url"].encode()).hexdigest(),
             "start": 100, "end": 180, "preset": "economy", "page": None, "source_json": None, "transcript": None})

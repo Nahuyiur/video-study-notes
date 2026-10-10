@@ -175,6 +175,86 @@ class StandaloneEngine(unittest.TestCase):
         self.assertEqual(len(self.model.requests), 1)
         self.assertNotEqual(load(self.run / "run.json")["status"], "finished")
 
+    def test_eight_overview_sheets_and_six_detail_jpegs_fit_default_api_budget(self):
+        from PIL import Image
+        run = load(self.run / "run.json")
+        run["preset"] = "standard"
+        run["budget"] = copy.deepcopy(materials.PRESETS["standard"])
+        for index in range(3, 49):
+            path = self.run / "frames" / f"f{index:04d}.jpg"
+            Image.new("RGB", (120, 80), (index * 5 % 256, index * 7 % 256, index * 11 % 256)).save(path)
+            run["frames"].append({"id": f"f{index:04d}", "timestamp": index / 3, "kind": "overview",
+                                 "path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                                 "nearby_segments": load(self.run / "segments.json")})
+        save(self.run / "run.json", run)
+        self.model.detail = [1, 2, 3, 4, 6, 7]
+        def detail_image(command):
+            second = float(command[command.index("-ss") + 1])
+            Image.new("RGB", (240, 160), (int(second) * 30, 100, 200)).save(command[-1])
+        with patch.object(materials.shutil, "which", return_value="/fixture/ffmpeg"), \
+                patch.object(materials, "media_input", return_value=("fixture", [])), \
+                patch.object(materials, "execute", side_effect=detail_image):
+            result = self.analyze()
+        self.assertEqual(result["status"], "complete", result["reason"])
+        self.assertEqual([json.loads(row["messages"][1]["content"][0]["text"])["stage"] for row in self.model.requests],
+                         ["overview", "detail", "synthesis"])
+        images = [[block for block in row["messages"][1]["content"] if block["type"] == "image_url"]
+                  for row in self.model.requests[:2]]
+        self.assertEqual([len(rows) for rows in images], [8, 6])
+        for block in images[1]:
+            with Image.open(io.BytesIO(base64.b64decode(block["image_url"]["url"].split(",", 1)[1]))) as picture:
+                self.assertEqual(picture.size, (240, 160))
+                self.assertEqual(picture.format, "JPEG")
+        for block in images[0]:
+            with Image.open(io.BytesIO(base64.b64decode(block["image_url"]["url"].split(",", 1)[1]))) as picture:
+                self.assertEqual(picture.size, (1152, 488))
+        prompt = json.loads(self.model.requests[0]["messages"][1]["content"][0]["text"])
+        self.assertEqual(prompt["targeted_detail_limit"], 6)
+        self.assertEqual([row["max_completion_tokens"] for row in self.model.requests], [4096, 4096, 4096])
+        self.assertEqual(len(result["usage"]["api_calls"]), 3)
+        self.assertEqual([f["timestamp"] for f in load(self.run / "run.json")["frames"] if f["kind"] == "detail"], self.model.detail)
+
+    def test_detail_selection_uses_saved_cap_and_rejects_more_than_six(self):
+        for detail_cap, times in ((3, [1, 2, 3, 4]), (12, [1, 2, 3, 4, 6, 7, 8])):
+            directory = self.root / f"detail-cap-{detail_cap}"
+            self.prepare(directory)
+            run = load(directory / "run.json")
+            run["budget"]["detail_frames"] = detail_cap
+            save(directory / "run.json", run)
+            model = ModelFixture(detail=times)
+            with patch("video_notes.api.send", model):
+                result = analyze_prepared(directory, provider=self.config, allow_asr=False, ledger=self.ledger)
+            self.assertEqual(result["status"], "failed")
+            self.assertIn(f"At most {min(detail_cap, 6)}", result["reason"])
+            self.assertEqual(len(model.requests), 1)
+            prompt = json.loads(model.requests[0]["messages"][1]["content"][0]["text"])
+            self.assertEqual(prompt["targeted_detail_limit"], min(detail_cap, 6))
+
+    def test_old_prompt_version_blocks_unfinished_resume_without_repeat_dispatch(self):
+        self.model.detail = [21]
+        self.analyze()
+        execution_path = self.run / "api/execution.json"
+        settings = load(execution_path)
+        settings["prompt_version"] = "video-study-notes-api-v1"
+        save(execution_path, settings)
+        before = len(self.model.requests)
+        self.model.detail = []
+        result = self.analyze()
+        self.assertEqual(result["status"], "failed")
+        self.assertIn("settings", result["reason"])
+        self.assertEqual(len(self.model.requests), before)
+
+    def test_old_frozen_note_still_exports_without_model_calls(self):
+        result = self.analyze()
+        self.assertEqual(result["status"], "complete")
+        execution_path = self.run / "api/execution.json"
+        settings = load(execution_path)
+        settings["prompt_version"] = "video-study-notes-api-v1"
+        save(execution_path, settings)
+        with patch("video_notes.api.send", side_effect=AssertionError("Export must not call a model")):
+            exported = notes.export_note(self.run, ("md",))
+        self.assertTrue(Path(exported["outputs"]["md"]).is_file())
+
     def test_active_settings_change_rejected_without_repeat_dispatch(self):
         self.model.unknown_stage = "synthesis"
         self.analyze()

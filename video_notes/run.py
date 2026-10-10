@@ -13,8 +13,8 @@ from pathlib import Path
 from .locking import file_lock
 
 PRESETS = {
-    "economy": {"text_chars": 12000, "overview_frames": 12, "detail_frames": 6, "read_batches": 4},
-    "standard": {"text_chars": 24000, "overview_frames": 24, "detail_frames": 12, "read_batches": 8},
+    "economy": {"text_chars": 12000, "overview_frames": 24, "detail_frames": 6, "read_batches": 4},
+    "standard": {"text_chars": 24000, "overview_frames": 48, "detail_frames": 12, "read_batches": 8},
 }
 
 

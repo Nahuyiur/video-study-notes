@@ -11,8 +11,9 @@ import uuid
 from pathlib import Path
 
 from .run import (PRESETS, bounded_segments, ensure_open, load, nearby, now,
-                  offset_segments, open_run, sample_times, save, segments_from, selected_duration,
+                  offset_segments, open_run, save, segments_from, selected_duration,
                   stamp, transcript_coverage)
+from .sampling import STRATEGIES, scan, select_overview
 
 UPSTREAM = Path(__file__).resolve().parents[1] / "scripts/upstream"
 from .sources import resolve_source, media_input as source_media, normalize_source, source_access, persistence_video
@@ -92,35 +93,51 @@ def frames(args):
     start, end = run["processed_range"]
     cap = run["budget"][args.kind + "_frames"]
     existing = [f for f in run["frames"] if f["kind"] == args.kind]
-    count = min(cap, max(3, int((end - start + 119) // 120)))
-    strategy = getattr(args, "strategy", "uniform")
+    strategy = getattr(args, "strategy", "hybrid")
+    if strategy not in STRATEGIES:
+        raise ValueError("Unknown sampling strategy")
     selected = []
-    if strategy == "slides" and args.kind == "overview" and not args.times:
-        from .sampling import scan, select_candidates
-        plan_path = directory / "sampling-plan.json"
-        if plan_path.exists():
-            plan = load(plan_path)
-            if plan["scan_range"] != [start, end]:
+    if args.kind == "overview" and not args.times:
+        sampling = run.get("sampling", {})
+        previous_strategy = sampling.get("strategy")
+        if previous_strategy is None and (existing or run.get("sampling_history", {}).get("overview")):
+            previous_strategy = "uniform"
+        if previous_strategy is not None and previous_strategy != strategy:
+            raise ValueError("Sampling strategy changed; create a new run or request explicit timestamps")
+        if "selected" in sampling:
+            if sampling["selection_range"] != [start, end]:
                 raise ValueError("Sampling plan scope changed; create a new run")
+            selected = sampling["selected"]
         else:
-            media, options = media_input(directory, run, "video", args.use_env_cookie, args.media, height=360)
-            plan = scan(directory, media, options, start, end)
-            save(plan_path, plan)
-        selected = select_candidates(plan["candidates"], start, end, cap)
+            plan = {}
+            if strategy in ("slides", "hybrid"):
+                plan_path = directory / "sampling-plan.json"
+                if plan_path.exists():
+                    plan = load(plan_path)
+                    if plan["scan_range"] != [start, end]:
+                        raise ValueError("Sampling plan scope changed; create a new run")
+                else:
+                    media, options = media_input(directory, run, "video", args.use_env_cookie, args.media, height=360)
+                    plan = scan(directory, media, options, start, end)
+                    save(plan_path, plan)
+            selected = select_overview(plan.get("candidates", []), start, end, cap, strategy)
+            run["sampling"] = {**{k: v for k, v in plan.items() if k != "candidates"},
+                               "strategy": strategy, "selection_range": [start, end], "selected": selected}
         times = [r["timestamp"] for r in selected]
-        run["sampling"] = {k: v for k, v in plan.items() if k != "candidates"}
-        run["sampling"]["strategy"] = "slides"
     else:
-        times = [float(t) for t in args.times.split(",")] if args.times else sample_times(start, end, count)
+        times = [float(t) for t in args.times.split(",")] if args.times else []
     reasons = {r["timestamp"]: r["reason"] for r in selected}
     if args.kind == "detail" and not args.times:
         raise ValueError("Detail frames need explicit timestamps selected after overview review")
+    times = sorted(set(round(t, 3) for t in times))
     if any(not start <= t < end for t in times):
         raise ValueError("Frame timestamp is outside the processed range")
     attempted = run.setdefault("sampling_history", {}).setdefault(args.kind, [f["timestamp"] for f in existing])
     new_times = sorted(set(round(t, 3) for t in times) - set(attempted))
     if len(attempted) + len(new_times) > cap:
         raise ValueError(f"{args.kind} frame budget exceeded ({cap})")
+    if selected:
+        save(directory / "run.json", run)
     if not new_times:
         print(json.dumps({"cached": True, "frames": [
             {"id": f["id"], "timestamp": f["timestamp"], "path": f["path"]}
@@ -220,7 +237,7 @@ def main(argv=None):
     p.add_argument("--rednote-access-stdin", action="store_true", help="Read a fresh RedNote access URL from stdin JSON")
     p.set_defaults(func=prepare)
     p = sub.add_parser("frames"); p.add_argument("--run", required=True); p.add_argument("--kind", choices=("overview", "detail"), default="overview")
-    p.add_argument("--strategy", choices=("uniform", "slides"), default="uniform"); p.add_argument("--times"); p.add_argument("--media"); p.add_argument("--use-env-cookie", action="store_true"); p.set_defaults(func=frames)
+    p.add_argument("--strategy", choices=STRATEGIES, default="hybrid"); p.add_argument("--times"); p.add_argument("--media"); p.add_argument("--use-env-cookie", action="store_true"); p.set_defaults(func=frames)
     p.add_argument("--rednote-skill"); p.add_argument("--rednote-access-stdin", action="store_true")
     p = sub.add_parser("transcribe"); p.add_argument("--run", required=True); p.add_argument("--media")
     p.add_argument("--model", choices=("base", "small"), default="small"); p.add_argument("--language", default="auto")

@@ -25,6 +25,7 @@ from . import api, calls, notes
 from .delivery import markdown
 from .locking import file_lock
 from .run import load, now
+from .sampling import STRATEGIES
 
 VERSION = "0.1.0"
 MAX_BODY = 24_000
@@ -132,9 +133,9 @@ def submission(payload):
         end = _number(end, "结束时间")
         if end <= start:
             raise ProductError("invalid_range", "结束时间需要晚于开始时间。")
-    preset, strategy = payload.get("preset", "economy"), payload.get("strategy", "slides")
+    preset, strategy = payload.get("preset", "economy"), payload.get("strategy", "hybrid")
     allow_asr = payload.get("allow_asr", True)
-    if preset not in ("economy", "standard") or strategy not in ("slides", "uniform") or not isinstance(allow_asr, bool):
+    if preset not in ("economy", "standard") or strategy not in STRATEGIES or not isinstance(allow_asr, bool):
         raise ProductError("invalid_input", "提取设置无效。")
     spec = {"url": source_url(payload.get("url")), "provider": provider, "budget": budget,
             "start": start, "end": end, "preset": preset, "strategy": strategy, "allow_asr": allow_asr,
